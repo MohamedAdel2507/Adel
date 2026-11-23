@@ -13,19 +13,25 @@ st.set_page_config(page_title="HYACINTH-X | Integrated Biorefinery Simulator", p
 def _check_credentials(email: str, password: str) -> bool:
     target_email = "ma2572006m@gmail.com".strip().lower()
     target_password = "25072006".strip()
-    return (email or "").strip().lower() == target_email and (password or "").strip() == target_password
+    clean_email = (str(email) if email is not None else "").strip().lower()
+    clean_password = (str(password) if password is not None else "").strip()
+    return clean_email == target_email and clean_password == target_password
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
     st.title("🔐 Login")
-    with st.form("login_form"):
-        email = st.text_input("Email", placeholder="ma2572006m@gmail.com")
-        pwd   = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Sign in")
+    
+    with st.form("login_form", clear_on_submit=False):
+        email_val = st.text_input("Email", key="login_email")
+        pwd_val   = st.text_input("Password", type="password", key="login_pwd")
+        submitted = st.form_submit_button("Sign in", use_container_width=True)
+        
         if submitted:
-            if _check_credentials(email, pwd):
+            if not email_val and not pwd_val:
+                st.warning("Please type your email and password.")
+            elif _check_credentials(email_val, pwd_val):
                 st.session_state.authenticated = True
                 try:
                     st.rerun()
