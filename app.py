@@ -11,7 +11,9 @@ st.set_page_config(page_title="HYACINTH-X | Integrated Biorefinery Simulator", p
 
 # ── authentication ──────────────────────────────────────────────────────
 def _check_credentials(email: str, password: str) -> bool:
-    return email == "ma2572006m@gmail.com" and password == "25072006"
+    target_email = "ma2572006m@gmail.com".strip().lower()
+    target_password = "25072006".strip()
+    return (email or "").strip().lower() == target_email and (password or "").strip() == target_password
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -19,7 +21,7 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     st.title("🔐 Login")
     with st.form("login_form"):
-        email = st.text_input("Email")
+        email = st.text_input("Email", placeholder="ma2572006m@gmail.com")
         pwd   = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Sign in")
         if submitted:
@@ -30,7 +32,7 @@ if not st.session_state.authenticated:
                 except AttributeError:
                     st.experimental_rerun()
             else:
-                st.error("Invalid email or password")
+                st.error("Invalid email or password. Please verify and try again.")
     st.stop()   # stop rendering the rest of the app until logged in
 # ── end of authentication ───────────────────────────────────────────────
 
