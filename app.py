@@ -1,8 +1,15 @@
+from __future__ import annotations
+
 """HYACINTH-X - unified Streamlit application (UI only; all calculations live in modules/ and core/)."""
 
-# ── authentication ──────────────────────────────────────────────────────
+import copy
+import json
+import pandas as pd
 import streamlit as st
 
+st.set_page_config(page_title="HYACINTH-X | Integrated Biorefinery Simulator", page_icon="🌿", layout="wide")
+
+# ── authentication ──────────────────────────────────────────────────────
 def _check_credentials(email: str, password: str) -> bool:
     return email == "ma2572006m@gmail.com" and password == "25072006"
 
@@ -18,18 +25,14 @@ if not st.session_state.authenticated:
         if submitted:
             if _check_credentials(email, pwd):
                 st.session_state.authenticated = True
-                st.experimental_rerun()
+                try:
+                    st.rerun()
+                except AttributeError:
+                    st.experimental_rerun()
             else:
                 st.error("Invalid email or password")
     st.stop()   # stop rendering the rest of the app until logged in
 # ── end of authentication ───────────────────────────────────────────────
-from __future__ import annotations
-
-import copy
-import json
-
-import pandas as pd
-import streamlit as st
 
 from core import configuration as cfg
 from core.data_manager import MODULE_NAMES, MODULES
@@ -39,8 +42,6 @@ from modules import module_01_feedstock as m01
 from modules import module_02_process_yield as m02
 from modules import module_03_energy_utilities as m03
 from reports import report_generator as rg
-
-st.set_page_config(page_title="HYACINTH-X | Integrated Biorefinery Simulator", page_icon="🌿", layout="wide")
 
 st.markdown("""<style>
 .block-container {padding-top: 1.2rem; padding-left: 1rem; padding-right: 1rem; max-width: 1400px;}
