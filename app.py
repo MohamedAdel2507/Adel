@@ -1,4 +1,28 @@
 """HYACINTH-X - unified Streamlit application (UI only; all calculations live in modules/ and core/)."""
+
+# ── authentication ──────────────────────────────────────────────────────
+import streamlit as st
+
+def _check_credentials(email: str, password: str) -> bool:
+    return email == "ma2572006m@gmail.com" and password == "25072006"
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.title("🔐 Login")
+    with st.form("login_form"):
+        email = st.text_input("Email")
+        pwd   = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in")
+        if submitted:
+            if _check_credentials(email, pwd):
+                st.session_state.authenticated = True
+                st.experimental_rerun()
+            else:
+                st.error("Invalid email or password")
+    st.stop()   # stop rendering the rest of the app until logged in
+# ── end of authentication ───────────────────────────────────────────────
 from __future__ import annotations
 
 import copy
