@@ -1,126 +1,126 @@
-"""Generate clear visual diagrams for the HYACINTH-X technical handbook."""
+"""Generate clear, bold, publication-quality diagrams for the PDF."""
 import os
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 os.makedirs("diagrams", exist_ok=True)
 
-def create_pipeline_diagram():
-    fig, ax = plt.subplots(figsize=(10, 4.5), dpi=300)
+def generate_flowsheet():
+    # Width 10 inches, height 4.2 inches, 150 DPI = 1500 x 630 px
+    fig, ax = plt.subplots(figsize=(10, 4.2), dpi=150)
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 4.5)
     ax.axis('off')
-    
-    # Title
-    ax.text(5.0, 4.2, "HYACINTH-X Information & Material Flow Architecture", 
-            ha='center', va='center', fontsize=14, fontweight='bold', color='#1b5e20')
-    
-    # Modules boxes
+
+    # Main pipeline boxes
     modules = [
-        ("M01: Feedstock\nAnalyzer", (0.5, 2.2), "#e8f5e9", "#2e7d32"),
-        ("M02: Process\nYield Estimator", (2.8, 2.2), "#e3f2fd", "#1565c0"),
-        ("M03: Energy &\nUtilities", (5.1, 2.2), "#fff3e0", "#e65100"),
-        ("M04: Zero-Waste\nManager", (7.4, 2.2), "#f3e5f5", "#7b1fa2"),
-        ("M05: Techno-Economic\nAnalysis (TEA)", (5.1, 0.4), "#fbe9e7", "#c62828")
+        ("M01: Feedstock\nAnalyzer", (0.3, 2.3), "#E8F5E9", "#2E7D32"),
+        ("M02: Process\nYield Estimator", (2.7, 2.3), "#E3F2FD", "#1565C0"),
+        ("M03: Energy &\nUtilities", (5.1, 2.3), "#FFF3E0", "#E65100"),
+        ("M04: Zero-Waste\nManager", (7.5, 2.3), "#F3E5F5", "#7B1FA2"),
+        ("M05: Techno-Economic\nAnalysis (TEA)", (4.8, 0.4), "#FFEBEE", "#C62828")
     ]
-    
+
     for name, (x, y), face, edge in modules:
-        rect = patches.FancyBboxPatch((x, y), 1.8, 1.1, boxstyle="round,pad=0.1,rounding_size=0.15",
-                                      facecolor=face, edgecolor=edge, linewidth=2)
+        rect = patches.FancyBboxPatch((x, y), 2.0, 1.2, boxstyle="round,pad=0.08,rounding_size=0.15",
+                                      facecolor=face, edgecolor=edge, linewidth=2.5)
         ax.add_patch(rect)
-        ax.text(x + 0.9, y + 0.55, name, ha='center', va='center', fontsize=9, fontweight='bold', color=edge)
+        ax.text(x + 1.0, y + 0.6, name, ha='center', va='center', fontsize=11, fontweight='bold', color=edge)
 
-    # Arrows and labels
+    # Arrows between linear modules
     # M01 -> M02
-    ax.annotate('', xy=(2.8, 2.75), xytext=(2.3, 2.75),
-                arrowprops=dict(facecolor='#2e7d32', edgecolor='#2e7d32', arrowstyle='->', lw=2))
-    ax.text(2.55, 3.0, "Dry Mass\nComposition", ha='center', va='bottom', fontsize=7, color='#2e7d32', fontweight='bold')
-    
+    ax.annotate('', xy=(2.7, 2.9), xytext=(2.3, 2.9),
+                arrowprops=dict(facecolor='#2E7D32', edgecolor='#2E7D32', width=2.5, headwidth=8))
+    ax.text(2.5, 3.1, "Dry Mass\nComposition", ha='center', va='bottom', fontsize=9, fontweight='bold', color='#2E7D32')
+
     # M02 -> M03
-    ax.annotate('', xy=(5.1, 2.75), xytext=(4.6, 2.75),
-                arrowprops=dict(facecolor='#1565c0', edgecolor='#1565c0', arrowstyle='->', lw=2))
-    ax.text(4.85, 3.0, "Recovered\nEthanol", ha='center', va='bottom', fontsize=7, color='#1565c0', fontweight='bold')
-
-    # M01 -> M03 (curved up)
-    ax.annotate('', xy=(5.8, 3.3), xytext=(1.4, 3.3),
-                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-0.25", color='#2e7d32', lw=1.5, ls='--'))
-    ax.text(3.6, 3.9, "Dry Mass & Raw Moisture (Drying Load)", ha='center', va='center', fontsize=7.5, color='#2e7d32', style='italic')
-
-    # M02 -> M04 (curved up)
-    ax.annotate('', xy=(8.1, 3.3), xytext=(3.7, 3.3),
-                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-0.2", color='#1565c0', lw=1.5, ls='--'))
-    ax.text(5.9, 3.75, "Residual Lignin, Ash, Unhydrolyzed Solids, Fermentation CO₂", ha='center', va='center', fontsize=7.5, color='#1565c0', style='italic')
+    ax.annotate('', xy=(5.1, 2.9), xytext=(4.7, 2.9),
+                arrowprops=dict(facecolor='#1565C0', edgecolor='#1565C0', width=2.5, headwidth=8))
+    ax.text(4.9, 3.1, "Recovered\nEthanol", ha='center', va='bottom', fontsize=9, fontweight='bold', color='#1565C0')
 
     # M03 -> M04
-    ax.annotate('', xy=(7.4, 2.75), xytext=(6.9, 2.75),
-                arrowprops=dict(facecolor='#e65100', edgecolor='#e65100', arrowstyle='->', lw=2))
-    ax.text(7.15, 3.0, "Wastewater\nStreams", ha='center', va='bottom', fontsize=7, color='#e65100', fontweight='bold')
+    ax.annotate('', xy=(7.5, 2.9), xytext=(7.1, 2.9),
+                arrowprops=dict(facecolor='#E65100', edgecolor='#E65100', width=2.5, headwidth=8))
+    ax.text(7.3, 3.1, "Wastewater\nStreams", ha='center', va='bottom', fontsize=9, fontweight='bold', color='#E65100')
 
-    # To M05
+    # M01 -> M03 curved overhead arrow
+    ax.annotate('', xy=(6.1, 3.5), xytext=(1.3, 3.5),
+                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-0.22", color='#2E7D32', lw=2.2, ls='--'))
+    ax.text(3.7, 4.25, "Dry Mass & Raw Moisture (Drying Load)", ha='center', va='center', fontsize=9.5, fontweight='bold', color='#2E7D32')
+
+    # M02 -> M04 curved overhead arrow
+    ax.annotate('', xy=(8.5, 3.5), xytext=(3.7, 3.5),
+                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-0.18", color='#1565C0', lw=2.2, ls='--'))
+    ax.text(6.1, 4.0, "Residual Lignin, Ash, Unhydrolyzed Fiber, CO₂", ha='center', va='center', fontsize=9.5, fontweight='bold', color='#1565C0')
+
+    # Connections to M05
+    # M01 -> M05
+    ax.annotate('', xy=(4.8, 1.0), xytext=(1.3, 2.3),
+                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.18", color='#2E7D32', lw=2))
+    ax.text(2.6, 1.3, "Wet Biomass (kg/yr)", ha='center', va='center', fontsize=9, fontweight='bold', color='#2E7D32')
+
     # M03 -> M05
-    ax.annotate('', xy=(6.0, 1.5), xytext=(6.0, 2.2),
-                arrowprops=dict(facecolor='#e65100', edgecolor='#e65100', arrowstyle='->', lw=2))
-    ax.text(6.1, 1.85, "Utilities (Thermal/Elec) & Ethanol L/yr", ha='left', va='center', fontsize=7, color='#e65100')
+    ax.annotate('', xy=(5.8, 1.6), xytext=(5.8, 2.3),
+                arrowprops=dict(facecolor='#E65100', edgecolor='#E65100', width=2.5, headwidth=8))
+    ax.text(5.95, 1.95, "Utilities (Thermal/Elec) & Ethanol L/yr", ha='left', va='center', fontsize=9, fontweight='bold', color='#E65100')
 
     # M04 -> M05
-    ax.annotate('', xy=(6.9, 0.95), xytext=(7.4, 2.2),
-                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.2", color='#7b1fa2', lw=1.5))
-    ax.text(7.5, 1.3, "Freshwater Deficit, Biochar,\nResidues for Combustion", ha='left', va='center', fontsize=7, color='#7b1fa2')
+    ax.annotate('', xy=(6.8, 1.0), xytext=(8.5, 2.3),
+                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.18", color='#7B1FA2', lw=2))
+    ax.text(8.0, 1.3, "Fresh Water Deficit,\nBiochar & Energy Credit", ha='center', va='center', fontsize=9, fontweight='bold', color='#7B1FA2')
 
-    # M01 -> M05
-    ax.annotate('', xy=(5.1, 0.95), xytext=(1.4, 2.2),
-                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.2", color='#2e7d32', lw=1.5))
-    ax.text(2.6, 1.3, "Wet Feed Purchased (kg/yr)", ha='center', va='center', fontsize=7, color='#2e7d32')
-
-    plt.tight_layout()
-    plt.savefig("diagrams/pipeline_flow.png", bbox_inches='tight')
+    plt.savefig("diagrams/pipeline_flow.png", dpi=150, bbox_inches='tight', pad_inches=0.1)
     plt.close()
+    print("pipeline_flow.png regenerated.")
 
-def create_mass_balance_diagram():
-    fig, ax = plt.subplots(figsize=(10, 4.2), dpi=300)
+
+def generate_mass_balance():
+    fig, ax = plt.subplots(figsize=(10, 4.0), dpi=150)
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 4.0)
     ax.axis('off')
-    
-    ax.text(5.0, 3.9, "Module 02 Organic Mass Boundary & Water Incorporation", 
-            ha='center', va='center', fontsize=13, fontweight='bold', color='#1565c0')
-    
-    # Boundary box
-    rect = patches.FancyBboxPatch((3.0, 0.5), 4.0, 2.8, boxstyle="round,pad=0.15,rounding_size=0.2",
-                                  facecolor='#f5f5f5', edgecolor='#1565c0', linewidth=2.5, linestyle='--')
-    ax.add_patch(rect)
-    ax.text(5.0, 3.0, "SYSTEM BOUNDARY: REACTION & SEPARATION", ha='center', va='center', fontsize=9, fontweight='bold', color='#1565c0')
-    
-    # Inner processes
-    ax.text(5.0, 2.3, "Pretreatment Fractionation\n(Solids retained: 90% | Solubilized: 7% | Degraded: 3%)", ha='center', va='center', fontsize=8, color='#333333')
-    ax.text(5.0, 1.6, "Enzymatic Hydrolysis\n(Glucan → Glucose, Xylan → Xylose, Mannan → Mannose)", ha='center', va='center', fontsize=8, color='#333333')
-    ax.text(5.0, 0.9, "Fermentation & Product Recovery\n(Hexose/Pentose → Ethanol + CO₂)", ha='center', va='center', fontsize=8, color='#333333')
 
-    # IN ARROWS
+    # System boundary
+    rect = patches.FancyBboxPatch((3.0, 0.4), 4.0, 3.2, boxstyle="round,pad=0.1,rounding_size=0.2",
+                                  facecolor='#F8F9FA', edgecolor='#1565C0', linewidth=3, linestyle='--')
+    ax.add_patch(rect)
+    ax.text(5.0, 3.3, "SYSTEM BOUNDARY: REACTION & RECOVERY", ha='center', va='center', fontsize=11, fontweight='bold', color='#1565C0')
+
+    # Inner process labels
+    ax.text(5.0, 2.5, "1. Pretreatment Fractionation\n(Solids retained: 90% | Dissolved: 7% | Degraded: 3%)", ha='center', va='center', fontsize=9, color='#333333')
+    ax.text(5.0, 1.7, "2. Enzymatic Hydrolysis with Hydration\n(Glucan → Glucose, Xylan → Xylose, Mannan → Mannose)", ha='center', va='center', fontsize=9, color='#333333')
+    ax.text(5.0, 0.9, "3. Fermentation & Product Distillation\n(Hexose & Pentose → Bioethanol + CO₂)", ha='center', va='center', fontsize=9, color='#333333')
+
+    # Inflow arrows
     inputs = [
-        ("Dry Biomass Input\n(m_dry)", 2.7),
-        ("Hydrolysis Water Consumed\n(Stoichiometric +11.1% to +13.6%)", 1.8),
-        ("Measured Soluble Sugars\n(Optional feed sugars)", 0.9)
+        ("Dry Biomass (m_dry)", 2.8),
+        ("Bound Hydrolysis Water (+11% to +13%)", 1.9),
+        ("Measured Soluble Feed Sugars", 1.0)
     ]
     for lbl, y in inputs:
-        ax.annotate('', xy=(3.0, y), xytext=(0.8, y),
-                    arrowprops=dict(facecolor='#2e7d32', edgecolor='#2e7d32', arrowstyle='->', lw=2))
-        ax.text(0.7, y, lbl, ha='right', va='center', fontsize=8, fontweight='bold', color='#2e7d32')
+        ax.annotate('', xy=(3.0, y), xytext=(1.0, y),
+                    arrowprops=dict(facecolor='#2E7D32', edgecolor='#2E7D32', width=2.5, headwidth=8))
+        ax.text(0.9, y, lbl, ha='right', va='center', fontsize=9, fontweight='bold', color='#2E7D32')
 
-    # OUT ARROWS
+    # Outflow arrows
     outputs = [
-        ("Recovered Bioethanol (95% recovery)", 3.0, '#1565c0'),
-        ("Fermentation CO₂ (Stoichiometric 0.955 kg/kg)", 2.4, '#37474f'),
-        ("Residual Solids (Lignin, Ash, Unhydrolyzed Fiber)", 1.8, '#6d4c41'),
-        ("Soluble Pretreatment Stream (Dissolved & Extractives)", 1.2, '#7b1fa2'),
-        ("Byproducts (Degraded mass, Ethanol loss, Unfermented sugars)", 0.6, '#c62828')
+        ("Recovered Bioethanol (95% recovery)", 3.1, '#1565C0'),
+        ("Fermentation CO₂ (Stoichiometric 0.955 kg/kg)", 2.5, '#37474F'),
+        ("Residual Solids (Lignin, Ash, Fiber)", 1.9, '#6D4C41'),
+        ("Dissolved Pretreatment Liquor Organics", 1.3, '#7B1FA2'),
+        ("Byproducts (Degraded Inhibitors, Unfermented Sugars, Losses)", 0.7, '#C62828')
     ]
     for lbl, y, col in outputs:
-        ax.annotate('', xy=(9.2, y), xytext=(7.0, y),
-                    arrowprops=dict(facecolor=col, edgecolor=col, arrowstyle='->', lw=2))
-        ax.text(9.3, y, lbl, ha='left', va='center', fontsize=8, fontweight='bold', color=col)
+        ax.annotate('', xy=(9.0, y), xytext=(7.0, y),
+                    arrowprops=dict(facecolor=col, edgecolor=col, width=2.5, headwidth=8))
+        ax.text(9.1, y, lbl, ha='left', va='center', fontsize=9, fontweight='bold', color=col)
 
-    plt.tight_layout()
-    plt.savefig("diagrams/mass_balance.png", bbox_inches='tight')
+    plt.savefig("diagrams/mass_balance.png", dpi=150, bbox_inches='tight', pad_inches=0.1)
     plt.close()
+    print("mass_balance.png regenerated.")
 
 if __name__ == "__main__":
-    create_pipeline_diagram()
-    create_mass_balance_diagram()
-    print("Diagrams successfully generated in diagrams/ directory.")
+    generate_flowsheet()
+    generate_mass_balance()
