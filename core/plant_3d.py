@@ -417,23 +417,9 @@ controls.minDistance = 2;
 controls.maxDistance = 200;
 
 // ─── ENVIRONMENT / LIGHTING ───────────────────────────────────────────────
-// Synthetic radiance environment - gradient spherical light
-const pmremGen = new THREE.PMREMGenerator(renderer);
-pmremGen.compileEquirectangularShader();
-
-// Build a simple coloured cube-map as environment
-(function buildEnv(){{
-  const envScene = new THREE.Scene();
-  // Soft blue sky gradient
-  const skyGeo = new THREE.SphereGeometry(50,16,8);
-  const skyMat = new THREE.MeshBasicMaterial({{
-    color:0x1a2744, side:THREE.BackSide
-  }});
-  envScene.add(new THREE.Mesh(skyGeo, skyMat));
-  const envRT = pmremGen.fromScene(envScene);
-  scene.environment = envRT.texture;
-  pmremGen.dispose();
-}})();
+const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0x1e293b, 1.4);
+hemiLight.position.set(0, 50, 0);
+scene.add(hemiLight);
 
 // Key light – warm overhead
 const keyLight = new THREE.DirectionalLight(0xfff4e0, 2.2);
@@ -1287,10 +1273,9 @@ function buildS101(ox,oz){{
   const diskGrp=new THREE.Group(); diskGrp.position.set(0,bowY,0);
   add(diskGrp,cyl(0.11,1.6),M.ss316,0,0,0); // central spindle
   for(let d=-0.5;d<=0.5;d+=0.09){{
-    diskGrp.add(Object.assign(
-      new THREE.Mesh(new THREE.ConeGeometry(1.1,0.22,24,1,true),M.ssBrushed),
-      {{position:{{y:d,x:0,z:0}}}}
-    ));
+    const coneDisc = new THREE.Mesh(new THREE.ConeGeometry(1.1,0.22,24,1,true),M.ssBrushed);
+    coneDisc.position.set(0, d, 0);
+    diskGrp.add(coneDisc);
   }}
   g.add(diskGrp);
 
