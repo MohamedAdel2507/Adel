@@ -24,6 +24,11 @@ from core.material_balance import (
     generate_sankey_data,
     STREAM_COLORS,
 )
+from core.energy_balance_adapter import (
+    compute_equipment_energy_balance,
+    compute_all_stream_energies,
+    compute_plant_energy_balance,
+)
 
 # ---------------------------------------------------------------------------
 # Equipment Catalog
@@ -379,6 +384,11 @@ def build_threejs_html(
     stream_data_json = json.dumps(stream_payload)
     active_stream_js = f'"{selected_stream_id}"' if selected_stream_id and selected_stream_id in stream_payload else '""'
 
+    # Energy overlay data for Three.js
+    _all_eq_energy_3d = {eid: compute_equipment_energy_balance(eid, dm) for eid in EQUIPMENT_METADATA}
+    eq_energy_colors_json = json.dumps({eid: e.color_indicator for eid, e in _all_eq_energy_3d.items()})
+    eq_energy_labels_json = json.dumps({eid: f"{e.thermal_duty_kw:.1f} kW th" for eid, e in _all_eq_energy_3d.items()})
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -439,9 +449,21 @@ body{{background:#0a0d14;overflow:hidden;font-family:-apple-system,BlinkMacSyste
   <div id="sc_flow"></div>
   <div id="sc_details"></div>
 </div>
+<div id="viz_panel" style="position:fixed;top:60px;right:12px;background:rgba(10,13,20,.88);backdrop-filter:blur(8px);border:1px solid rgba(99,179,237,.3);border-radius:8px;padding:8px 12px;z-index:9;font-size:11.5px;color:#cbd5e0">
+  <div style="font-weight:700;color:#63b3ed;margin-bottom:5px;font-size:11px">VISUALIZATION MODE</div>
+  <label style="display:block;cursor:pointer;margin-bottom:3px"><input type="radio" name="vizmode" value="plant" checked onchange="setVizMode(this.value)" style="margin-right:4px">🏭 Plant</label>
+  <label style="display:block;cursor:pointer;margin-bottom:3px"><input type="radio" name="vizmode" value="mass" onchange="setVizMode(this.value)" style="margin-right:4px">⚖️ Mass</label>
+  <label style="display:block;cursor:pointer;margin-bottom:3px"><input type="radio" name="vizmode" value="energy" onchange="setVizMode(this.value)" style="margin-right:4px">⚡ Energy</label>
+  <label style="display:block;cursor:pointer"><input type="radio" name="vizmode" value="combined" onchange="setVizMode(this.value)" style="margin-right:4px">🔄 Combined</label>
+</div>
 
 <script>
 (function(){{
+// ─── ENERGY OVERLAY DATA ────────────────────────────────────────────────────
+const EQ_ENERGY_COLORS = {eq_energy_colors_json};
+const EQ_ENERGY_LABELS = {eq_energy_labels_json};
+const STREAM_DATA = {stream_data_json};
+let currentVizMode = 'plant';
 // ─── RENDERER SETUP ──────────────────────────────────────────────────────
 const canvas = document.getElementById('c');
 const getW = () => canvas.clientWidth || window.innerWidth || 800;
@@ -1761,8 +1783,15 @@ pump(plantGrp, 14.5,0.3,9.0,Math.PI/2);
 pump(plantGrp,  8.0,0.3,18.0,0);
 pump(plantGrp, -2.0,0.3,18.0,0);
 
+// ─── TAG EQUIPMENT MESHES FOR ENERGY OVERLAY ──────────────────────────────
+Object.entries(eqObjs).forEach(function([eid, grp]) {{
+  grp.traverse(function(obj) {{
+    if (obj.isMesh) obj.userData.eq_id = eid;
+  }});
+}});
+
 // ─── PROCESS PIPING & MASS BALANCE STREAMS ───────────────────────────────
-const streamMeta = {stream_data_json};
+const streamMeta = STREAM_DATA;
 const activeStreamId = {active_stream_js};
 
 const pipeDefs=[
@@ -1979,6 +2008,44 @@ function camPreset(mode){{
 }}
 window.camPreset = camPreset;
 
+// ─── VISUALIZATION MODE SWITCHER ─────────────────────────────────────────────
+function setVizMode(mode) {{
+  currentVizMode = mode;
+  scene.traverse(function(obj) {{
+    if (!obj.isMesh || !obj.userData || !obj.userData.eq_id) return;
+    const eid = obj.userData.eq_id;
+    const mat = obj.material;
+    if (!mat) return;
+    if (mode === 'plant') {{
+      // Restore default emissive (no extra glow)
+      if (mat.emissive) mat.emissive.set(0x000000);
+      if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0.0;
+    }} else if (mode === 'energy' || mode === 'combined') {{
+      const hexStr = EQ_ENERGY_COLORS[eid];
+      if (hexStr) {{
+        const r = parseInt(hexStr.slice(1,3),16)/255;
+        const g = parseInt(hexStr.slice(3,5),16)/255;
+        const b = parseInt(hexStr.slice(5,7),16)/255;
+        if (mat.emissive) mat.emissive.setRGB(r*0.4, g*0.4, b*0.4);
+        if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0.6;
+      }}
+    }} else if (mode === 'mass') {{
+      // Cyan emissive tint for mass balance mode
+      if (mat.emissive) mat.emissive.setRGB(0, 0.15, 0.25);
+      if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0.5;
+    }}
+  }});
+  // Update legend
+  const lab = document.getElementById('eqlab');
+  if (lab) {{
+    if (mode === 'energy') lab.textContent = '⚡ Energy Balance Mode — hover equipment';
+    else if (mode === 'mass') lab.textContent = '⚖️ Mass Balance Mode';
+    else if (mode === 'combined') lab.textContent = '🔄 Combined Mass & Energy';
+    else lab.textContent = `Cutaway: {'ON' if cutaway else 'OFF'}`;
+  }}
+}}
+window.setVizMode = setVizMode;
+
 const bIso = document.getElementById('btn-iso');
 if(bIso) bIso.addEventListener('click', function(e){{ e.preventDefault(); camPreset('iso'); }});
 const bFront = document.getElementById('btn-front');
@@ -2060,7 +2127,13 @@ def render_3d_plant_section(dm: Any = None) -> None:
     with ctrl1:
         view_mode = st.selectbox(
             "Visualization Mode",
-            ["Full Plant Overview (PFD Layout)", "Focused Equipment Inspection"],
+            [
+                "Full Plant Overview (PFD Layout)",
+                "Focused Equipment Inspection",
+                "⚖️ Mass Balance Mode",
+                "⚡ Energy Balance Mode",
+                "🔄 Combined Mass & Energy",
+            ],
             key="w_3d_view_mode",
         )
     with ctrl2:
@@ -2086,6 +2159,14 @@ def render_3d_plant_section(dm: Any = None) -> None:
 
     eq_balance = compute_equipment_material_balance(selected_eq, dm)
 
+    # Energy balance data (additive — read-only from dm)
+    eq_energy = compute_equipment_energy_balance(selected_eq, dm)
+    all_stream_energies = compute_all_stream_energies(dm)
+    plant_energy = compute_plant_energy_balance(dm)
+    strm_energy = all_stream_energies.get(selected_stream_id)
+    # Pre-compute energy for all equipment (for roster + 3D overlay)
+    all_eq_energy = {eid: compute_equipment_energy_balance(eid, dm) for eid in EQUIPMENT_METADATA}
+
     col_left, col_center, col_right = st.columns([1.1, 2.5, 1.4], gap="medium")
 
     with col_left:
@@ -2095,6 +2176,7 @@ def render_3d_plant_section(dm: Any = None) -> None:
         )
         for eid, meta in EQUIPMENT_METADATA.items():
             b_item = compute_equipment_material_balance(eid, dm)
+            e_item = all_eq_energy[eid]
             is_active = eid == selected_eq
             bg = "#e3f2fd" if is_active else "#ffffff"
             border = "2px solid #1565c0" if is_active else "1px solid #e2e8f0"
@@ -2107,6 +2189,11 @@ def render_3d_plant_section(dm: Any = None) -> None:
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
                       <span style="font-size:.70rem;color:#718096">{meta['stage']}</span>
                       <span style="font-size:.70rem;font-weight:600;color:#2d3748">{b_item.total_in_kg_h:.1f} kg/h</span>
+                    </div>
+                    <div style="display:flex;align-items:center;margin-top:3px;gap:5px">
+                      <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:{e_item.color_indicator}"></span>
+                      <span style="font-size:.67rem;color:#64748b;font-weight:600">{e_item.energy_type}</span>
+                      <span style="font-size:.67rem;color:#94a3b8">· {e_item.thermal_duty_kw:.1f} kW th</span>
                     </div>
                 </div>""",
                 unsafe_allow_html=True,
@@ -2129,12 +2216,30 @@ def render_3d_plant_section(dm: Any = None) -> None:
             unsafe_allow_html=True,
         )
 
+        # Energy overlay badges
+        th_color = "#ef4444" if eq_energy.thermal_duty_kw > 0 else "#94a3b8"
+        el_color = "#f59e0b" if eq_energy.electric_duty_kw > 0 else "#94a3b8"
+        st_color = "#3b82f6" if eq_energy.steam_consumption_kg_h > 0 else "#94a3b8"
+        res_color = "#16a34a" if abs(eq_energy.energy_residual_kw) < 1.0 else "#ef4444"
+        st.markdown(
+            f"""<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px;margin-top:4px">
+              <div style="font-size:.78rem;font-weight:700;color:#c2410c;margin-bottom:4px">⚡ {selected_eq} ENERGY SUMMARY:</div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px">
+                <span style="background:{th_color};color:white;padding:3px 7px;border-radius:4px;font-size:11px;font-weight:700">🔥 Thermal: {eq_energy.thermal_duty_kw:.2f} kW</span>
+                <span style="background:{el_color};color:white;padding:3px 7px;border-radius:4px;font-size:11px;font-weight:700">⚡ Electrical: {eq_energy.electric_duty_kw:.2f} kW</span>
+                <span style="background:{st_color};color:white;padding:3px 7px;border-radius:4px;font-size:11px;font-weight:700">💨 Steam: {eq_energy.steam_consumption_kg_h:.2f} kg/h</span>
+                <span style="background:{res_color};color:white;padding:3px 7px;border-radius:4px;font-size:11px;font-weight:700">∑ Residual: {eq_energy.energy_residual_kw:.3f} kW</span>
+              </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
     with col_right:
         meta = EQUIPMENT_METADATA[selected_eq]
         st.markdown(f"#### {meta['icon']} {selected_eq}: {meta['name']}")
         st.caption(f"**Stage:** {meta['stage']}")
 
-        r_tab1, r_tab2, r_tab3, r_tab4 = st.tabs(["⚖️ Mass Balance", "🌊 Stream Data", "📊 Telemetry", "⚙️ Internals"])
+        r_tab1, r_tab2, r_tab3, r_tab4, r_tab5 = st.tabs(["⚖️ Mass Balance", "🌊 Stream Data", "⚡ Energy Balance", "📊 Telemetry", "⚙️ Internals"])
 
         with r_tab1:
             st.markdown("<div style='font-size:.78rem;font-weight:700;color:#1565c0;margin-bottom:.3rem'>EQUIPMENT MASS BALANCE:</div>", unsafe_allow_html=True)
@@ -2167,10 +2272,44 @@ def render_3d_plant_section(dm: Any = None) -> None:
                 if strm.component_fractions:
                     st.markdown("<div style='font-size:.75rem;font-weight:700;color:#475569;margin-top:.4rem'>COMPONENT FRACTIONS (wt%):</div>", unsafe_allow_html=True)
                     st.dataframe(pd.DataFrame([{"Component": k, "Mass Fraction (%)": f"{v:.2f}%", "Flow (kg/h)": f"{strm.components.get(k, 0):.3f}"} for k, v in strm.component_fractions.items()]), hide_index=True, use_container_width=True)
+                # Stream energy properties
+                if strm_energy and strm_energy.status != "Unavailable":
+                    st.markdown("<div style='font-size:.74rem;font-weight:700;color:#e65100;margin-top:.5rem'>STREAM ENERGY PROPERTIES:</div>", unsafe_allow_html=True)
+                    se_c1, se_c2 = st.columns(2)
+                    se_c1.metric("Specific Enthalpy", f"{strm_energy.specific_enthalpy_kj_kg:.1f} kJ/kg", f"Cp = {strm_energy.specific_heat_kj_kg_k:.3f} kJ/kg·K")
+                    se_c2.metric("Energy Flow Rate", f"{strm_energy.energy_flow_kw:.2f} kW", f"{strm_energy.energy_flow_mj_h:.2f} MJ/h")
+                    st.caption(f"**Status:** {strm_energy.status} | Reference T = 0.0 °C")
             else:
                 st.info("Select a stream from the top controls or click any pipe in 3D to inspect.")
 
         with r_tab3:
+            st.markdown("<div style='font-size:.78rem;font-weight:700;color:#e65100'>EQUIPMENT ENERGY BALANCE (First Law):</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='background:{eq_energy.color_indicator};border-radius:4px;padding:4px 8px;color:white;font-size:.74rem;font-weight:700;margin-bottom:.5rem'>{eq_energy.energy_type}</div>",
+                unsafe_allow_html=True,
+            )
+            e_c1, e_c2 = st.columns(2)
+            e_c1.metric("Thermal Duty", f"{eq_energy.thermal_duty_kw:.2f} kW", f"{eq_energy.thermal_duty_mj_day:,.2f} MJ/d")
+            e_c2.metric("Electrical Power", f"{eq_energy.electric_duty_kw:.2f} kW", f"{eq_energy.electric_duty_kwh_day:.2f} kWh/d")
+            e_c3, e_c4 = st.columns(2)
+            e_c3.metric("Process Steam", f"{eq_energy.steam_consumption_kg_h:.2f} kg/h", f"{eq_energy.steam_consumption_kg_day:.1f} kg/d")
+            e_c4.metric("Energy Residual", f"{eq_energy.energy_residual_kw:.3f} kW", "First-Law Check")
+            e_c5, e_c6 = st.columns(2)
+            e_c5.metric("Inlet Temperature", f"{eq_energy.inlet_temp_c:.1f} °C", "Process Stream In")
+            e_c6.metric("Outlet Temperature", f"{eq_energy.outlet_temp_c:.1f} °C", "Process Stream Out")
+            e_c7, e_c8 = st.columns(2)
+            e_c7.metric("Inflow Enthalpy", f"{eq_energy.inflow_enthalpy_kw:.2f} kW", "Sensible+Latent")
+            e_c8.metric("Outflow Enthalpy", f"{eq_energy.outflow_enthalpy_kw:.2f} kW", "Sensible+Latent")
+            if not eq_energy.energy_table.empty:
+                st.markdown("<div style='font-size:.74rem;font-weight:700;color:#475569;margin-top:.4rem'>ENERGY BALANCE LEDGER:</div>", unsafe_allow_html=True)
+                st.dataframe(eq_energy.energy_table, hide_index=True, use_container_width=True)
+            st.markdown("<div style='font-size:.74rem;font-weight:700;color:#475569;margin-top:.4rem'>GOVERNING EQUATION:</div>", unsafe_allow_html=True)
+            st.latex(eq_energy.governing_equation)
+            with st.expander("Engineering Assumptions"):
+                for a in eq_energy.assumptions:
+                    st.markdown(f"• *{a}*")
+
+        with r_tab4:
             telem = extract_equipment_telemetry(selected_eq, dm)
             st.markdown(
                 f"<div style='font-size:.75rem;font-weight:700;color:#2e7d32;margin-bottom:.4rem'>DATA BUS: {telem['status'].upper()}</div>",
@@ -2181,7 +2320,7 @@ def render_3d_plant_section(dm: Any = None) -> None:
             else:
                 st.info("No telemetry. Run simulation to stream live parameters.")
 
-        with r_tab4:
+        with r_tab5:
             st.markdown("<div style='font-size:.78rem;font-weight:700;color:#4a5568'>INTERNAL MECHANICAL ASSEMBLIES:</div>", unsafe_allow_html=True)
             for item in meta["internals"]:
                 st.markdown(f"• **{item}**")
@@ -2204,6 +2343,18 @@ def render_3d_plant_section(dm: Any = None) -> None:
         st.metric("Fuel Ethanol Output", f"{plant_balance['product_ethanol_kg_day']:.2f} kg/day", f"{plant_balance['product_ethanol_l_day']:.1f} L/day (>99.5%)")
     with kpi4:
         st.metric("Facility Balance Closure", f"{plant_balance['closure_pct']:.2f}%", f"Error: {plant_balance['closure_error_pct']:+.2f}%")
+
+    # Plant-level Energy KPIs
+    st.markdown("#### ⚡ Plant-Level Energy Balance")
+    e_kpi1, e_kpi2, e_kpi3, e_kpi4 = st.columns(4)
+    with e_kpi1:
+        st.metric("Gross Thermal Duty", f"{plant_energy.get('gross_thermal_kw', 0):.1f} kW", f"{plant_energy.get('gross_thermal_mj_day', 0):,.1f} MJ/d")
+    with e_kpi2:
+        st.metric("Net Thermal (after recovery)", f"{plant_energy.get('net_thermal_kw', 0):.1f} kW", f"{plant_energy.get('net_thermal_mj_day', 0):,.1f} MJ/d")
+    with e_kpi3:
+        st.metric("Heat Recovery Credit", f"{plant_energy.get('recovered_heat_kw', 0):.1f} kW", "Fermentor cooling → utility")
+    with e_kpi4:
+        st.metric("Specific Energy Intensity", f"{plant_energy.get('specific_energy_kwh_l', 0):.2f} kWh/L EtOH", "Thermal + Electrical")
 
     # Plotly Interactive Sankey Diagram
     sankey_data = generate_sankey_data(dm)
