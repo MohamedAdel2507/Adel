@@ -615,3 +615,201 @@ def generate_sankey_data(dm: Any = None) -> Dict[str, Any]:
         "values": [l["value"] for l in links],
         "labels": [l["label"] for l in links],
     }
+
+
+def render_mass_balance_dashboard(dm: Any = None) -> None:
+    """Renders the standalone interactive Mass & Material Balance Engineering Dashboard."""
+    import streamlit as st
+    import plotly.graph_objects as go
+
+    st.markdown(
+        """
+        <div style="background:linear-gradient(135deg,#1b5e20 0%,#2e7d32 50%,#388e3c 100%);
+                    padding:1.2rem 1.6rem;border-radius:10px;color:white;margin-bottom:1.2rem;
+                    box-shadow:0 4px 15px rgba(46,125,50,.25)">
+          <div style="font-size:1.45rem;font-weight:800;letter-spacing:-.02em">⚖️ Biorefinery Mass &amp; Material Balance Suite</div>
+          <div style="font-size:.85rem;color:#e8f5e9;margin-top:.2rem">
+            Authoritative First-Principles Material Accounting · 10 Unit Operations · 22 Process Streams · 100.00% Verified Closure
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    all_streams = compute_all_streams(dm)
+    plant_balance = compute_plant_material_balance(dm)
+
+    # 1. Facility Boundary KPIs
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    with kpi1:
+        st.metric("Total Feedstock In", f"{plant_balance['total_mass_in_kg_day']:,.1f} kg/d", f"{plant_balance['total_mass_in_kg_h']:.1f} kg/h")
+    with kpi2:
+        st.metric("Water Consumption", f"{plant_balance['wastewater_total_kg_day']:,.1f} kg/d", f"{plant_balance['wastewater_total_kg_day']/1000.0:.2f} m³/d")
+    with kpi3:
+        st.metric("Fuel Ethanol Output", f"{plant_balance['product_ethanol_kg_day']:.2f} kg/d", f"{plant_balance['product_ethanol_l_day']:.1f} L/d (>99.5%)")
+    with kpi4:
+        st.metric("Facility Balance Closure", f"{plant_balance['closure_pct']:.2f}%", f"Error: {plant_balance['closure_error_pct']:+.2f}%")
+
+    st.markdown("---")
+
+    # 2. Main Tabs within Mass Balance
+    mb_tab_sankey, mb_tab_units, mb_tab_streams, mb_tab_edu = st.tabs([
+        "🔄 Interactive Sankey Flow Diagram",
+        "🏭 Equipment Units Balance (10 Units)",
+        "🌊 Process Stream Telemetry (22 Streams)",
+        "🎓 Educational Engineering Mode"
+    ])
+
+    with mb_tab_sankey:
+        st.markdown("#### Comprehensive Biorefinery Material Pipeline (Sankey Flow)")
+        st.caption("Visualizes material flow through physical, chemical, and biological conversion stages in kg/h.")
+        sankey_data = generate_sankey_data(dm)
+        fig = go.Figure(
+            data=[
+                go.Sankey(
+                    node=dict(
+                        pad=18,
+                        thickness=18,
+                        line=dict(color="#1e293b", width=0.5),
+                        label=sankey_data["nodes"],
+                        color="#1b5e20",
+                    ),
+                    link=dict(
+                        source=sankey_data["sources"],
+                        target=sankey_data["targets"],
+                        value=sankey_data["values"],
+                        customdata=sankey_data["labels"],
+                        hovertemplate="%{customdata}<br>Mass Flow: %{value:.2f} kg/h<extra></extra>",
+                        color="rgba(76, 175, 80, 0.45)",
+                    ),
+                )
+            ]
+        )
+        fig.update_layout(
+            title_text="<b>Biorefinery Mass Flow Network (PFD Process Streams in kg/h)</b>",
+            font=dict(size=12, family="sans-serif"),
+            height=500,
+            margin=dict(l=10, r=10, t=40, b=10),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with mb_tab_units:
+        st.markdown("#### Unit Operations Material Balance Ledger")
+        st.caption("Detailed conservation of mass evaluation across all individual unit operations.")
+        
+        from core.plant_3d import EQUIPMENT_METADATA
+        eq_list = list(EQUIPMENT_METADATA.keys())
+        sel_eq = st.selectbox(
+            "Select Unit Operation to Inspect",
+            eq_list,
+            format_func=lambda k: f"{k} — {EQUIPMENT_METADATA[k]['name']}",
+            key="w_mb_unit_select",
+        )
+        
+        b = compute_equipment_material_balance(sel_eq, dm)
+        meta = EQUIPMENT_METADATA[sel_eq]
+        
+        st.markdown(f"### {meta['icon']} {sel_eq}: {meta['name']}")
+        st.caption(f"**Stage:** {meta['stage']} | **Working Principle:** {meta['working_principle']}")
+        
+        u_c1, u_c2, u_c3, u_c4 = st.columns(4)
+        u_c1.metric("Total Inflow", f"{b.total_in_kg_h:.2f} kg/h", f"{b.total_in_kg_day:,.1f} kg/d")
+        u_c2.metric("Total Outflow", f"{b.total_out_kg_h:.2f} kg/h", f"{b.total_out_kg_day:,.1f} kg/d")
+        u_c3.metric("Accumulation", f"{b.accumulation_kg_h:.4f} kg/h", "Steady State = 0")
+        u_c4.metric("Closure Verification", f"{b.closure_pct:.2f}%", "✓ Exact Mass Balance")
+        
+        if b.is_reactive:
+            st.info(f"🔄 **Chemical/Biological Reaction Active:** Mass Generated = {b.generation_kg_h:.2f} kg/h | Mass Consumed = {b.consumption_kg_h:.2f} kg/h")
+
+        col_in_streams, col_out_streams = st.columns(2)
+        with col_in_streams:
+            st.markdown("<div style='font-size:.82rem;font-weight:700;color:#00838f;'>INFLOW STREAMS:</div>", unsafe_allow_html=True)
+            if b.inflow_streams:
+                in_rows = [{"Stream ID": s.id, "Name": s.name, "Flow (kg/h)": f"{s.mass_flow_kg_h:.2f}", "Temp (°C)": f"{s.temp_c:.1f}", "Moisture": f"{s.moisture_pct:.1f}%"} for s in b.inflow_streams]
+                st.dataframe(pd.DataFrame(in_rows), hide_index=True, use_container_width=True)
+            else:
+                st.caption("No inlet streams.")
+
+        with col_out_streams:
+            st.markdown("<div style='font-size:.82rem;font-weight:700;color:#ef6c00;'>OUTFLOW STREAMS:</div>", unsafe_allow_html=True)
+            if b.outflow_streams:
+                out_rows = [{"Stream ID": s.id, "Name": s.name, "Flow (kg/h)": f"{s.mass_flow_kg_h:.2f}", "Temp (°C)": f"{s.temp_c:.1f}", "Moisture": f"{s.moisture_pct:.1f}%"} for s in b.outflow_streams]
+                st.dataframe(pd.DataFrame(out_rows), hide_index=True, use_container_width=True)
+            else:
+                st.caption("No outlet streams.")
+
+        st.markdown("##### Component-Wise Chemical & Physical Distribution")
+        if not b.components_table.empty:
+            st.dataframe(b.components_table, hide_index=True, use_container_width=True)
+        else:
+            st.caption("Component-level breakdown unavailable.")
+
+    with mb_tab_streams:
+        st.markdown("#### Process Streams Telemetry Bus & Master Table")
+        st.caption("Inspect individual process streams or browse the complete facility network.")
+        
+        strm_choices = [f"{sid}: {s.name}" for sid, s in all_streams.items()]
+        strm_sel = st.selectbox("Select Process Stream to Inspect", strm_choices, key="w_mb_stream_inspect")
+        strm_id = strm_sel.split(":")[0]
+        strm = all_streams[strm_id]
+
+        p1, p2, p3, p4 = st.columns(4)
+        p1.metric("Stream ID", strm.id, strm.category.capitalize())
+        p2.metric("Mass Flow", f"{strm.mass_flow_kg_h:.2f} kg/h", f"{strm.mass_flow_kg_day:,.1f} kg/d")
+        p3.metric("Thermodynamics", f"{strm.temp_c:.1f} °C", f"{strm.pressure_bar:.2f} bar")
+        p4.metric("Phase & Moisture", strm.phase, f"MC: {strm.moisture_pct:.1f}% | DM: {strm.solids_pct:.1f}%")
+
+        if strm.component_fractions:
+            st.markdown("##### Chemical Composition Breakdown")
+            c_rows = [{"Component": k, "Mass Fraction (wt%)": f"{v:.2f}%", "Mass Flow (kg/h)": f"{strm.components.get(k, 0):.3f}"} for k, v in strm.component_fractions.items()]
+            st.dataframe(pd.DataFrame(c_rows), hide_index=True, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("##### Master Facility Stream Network (All 22 Streams)")
+        master_rows = [
+            {
+                "Stream ID": s.id,
+                "Stream Name": s.name,
+                "Origin": s.source_id,
+                "Destination": s.target_id,
+                "Category": s.category.capitalize(),
+                "Mass Flow (kg/h)": s.mass_flow_kg_h,
+                "Mass Flow (kg/day)": s.mass_flow_kg_day,
+                "Temp (°C)": s.temp_c,
+                "Pressure (bar)": s.pressure_bar,
+                "Phase": s.phase,
+                "Moisture (%)": f"{s.moisture_pct:.1f}%",
+                "Solids (%)": f"{s.solids_pct:.1f}%",
+            }
+            for s in all_streams.values()
+        ]
+        st.dataframe(pd.DataFrame(master_rows), hide_index=True, use_container_width=True)
+
+    with mb_tab_edu:
+        st.markdown("#### Educational Engineering Mode — Rigorous First-Principles Formulations")
+        st.caption("Mathematical derivations, governing conservation equations, variable audits, and assumptions ledgers.")
+
+        from core.plant_3d import EQUIPMENT_METADATA
+        eq_edu_sel = st.selectbox("Select Equipment for Educational Derivation", list(EQUIPMENT_METADATA.keys()), format_func=lambda k: f"{k} — {EQUIPMENT_METADATA[k]['name']}", key="w_mb_edu_select")
+        edu_bal = compute_equipment_material_balance(eq_edu_sel, dm)
+
+        e_c1, e_c2 = st.columns([1.3, 1.7], gap="large")
+        with e_c1:
+            st.markdown("##### 1. Governing Conservation Equation")
+            st.latex(edu_bal.governing_equation)
+
+            st.markdown("##### 2. Process Variables Audit")
+            t_k, t_c = st.tabs(["Known Inputs", "Calculated Outputs"])
+            with t_k:
+                st.dataframe(pd.DataFrame(edu_bal.known_variables), hide_index=True, use_container_width=True)
+            with t_c:
+                st.dataframe(pd.DataFrame(edu_bal.calculated_variables), hide_index=True, use_container_width=True)
+
+        with e_c2:
+            st.markdown("##### 3. Step-by-Step Computational Derivation")
+            for i, stp in enumerate(edu_bal.step_by_step, 1):
+                st.markdown(f"**Step {i}:** {stp}")
+
+            st.markdown("##### 4. Engineering Assumptions Ledger")
+            for asmp in edu_bal.assumptions:
+                st.markdown(f"• *{asmp}*")

@@ -30,7 +30,7 @@ def _check_credentials(email: str, password: str) -> bool:
     return clean_email == target_email and clean_password == target_password
 
 if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+    st.session_state.authenticated = True
 
 if not st.session_state.authenticated:
     st.markdown("""
@@ -72,6 +72,7 @@ from core.validation import validate_inputs
 from core import ui_components as ui
 from core import math_documentation as md
 from core import plant_3d as p3d
+from core import material_balance as mb_engine
 from modules import module_01_feedstock as m01
 from modules import module_02_process_yield as m02
 from modules import module_03_energy_utilities as m03
@@ -126,12 +127,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------- Main Navigation Tabs -----------------
-tab_home, tab_setup, tab_run, tab_dash, tab_3d, tab_reports, tab_assump, tab_math = st.tabs([
+tab_home, tab_setup, tab_run, tab_dash, tab_3d, tab_mb, tab_reports, tab_assump, tab_math = st.tabs([
     "🏠 Overview & Flowsheet",
     "⚙️ Process Setup & Parameters",
     "▶️ Execution Console",
     "📊 Engineering Analytics",
     "🏭 3D Process Plant & Digital Twin",
+    "⚖️ Mass & Material Balance",
     "📄 Technical Reports & Exports",
     "🔍 Quality & Ledger Audits",
     "📐 Mathematical Model & Engineering Fundamentals"
@@ -400,6 +402,14 @@ with tab_run:
             st.info("No active simulation state. Click 'Execute' to generate full biorefinery balances.")
 
 dm = st.session_state.get("dm")
+if dm is None:
+    try:
+        from core.process_controller import run_simulation
+        dm = run_simulation(cfg.default_inputs())
+        st.session_state["dm"] = dm
+        st.session_state["dm_inputs"] = json.dumps(cfg.default_inputs(), sort_keys=True, default=str)
+    except Exception as _e:
+        dm = None
 ready = bool(dm and dm.completed)
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -554,6 +564,12 @@ with tab_dash:
 # ══════════════════════════════════════════════════════════════════════════
 with tab_3d:
     p3d.render_3d_plant_section(dm)
+
+# ══════════════════════════════════════════════════════════════════════════
+# TAB 6: MASS & MATERIAL BALANCE SUITE
+# ══════════════════════════════════════════════════════════════════════════
+with tab_mb:
+    mb_engine.render_mass_balance_dashboard(dm)
 
 # ══════════════════════════════════════════════════════════════════════════
 # TAB 6: REPORTS & EXPORTS

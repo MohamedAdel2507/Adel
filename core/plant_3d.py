@@ -2038,20 +2038,6 @@ setTimeout(onWinResize, 800);
 def render_3d_plant_section(dm: Any = None) -> None:
     """Renders the comprehensive 3D Process Plant & Digital Twin engineering suite."""
 
-    st.markdown(
-        """
-        <div style="background:linear-gradient(135deg,#0d47a1 0%,#1565c0 50%,#0277bd 100%);
-                    padding:1.2rem 1.6rem;border-radius:10px;color:white;margin-bottom:1.2rem;
-                    box-shadow:0 4px 15px rgba(2,119,189,.2)">
-          <div style="font-size:1.45rem;font-weight:800;letter-spacing:-.02em">🏭 3D Process Plant &amp; Digital Twin</div>
-          <div style="font-size:.85rem;color:#e1f5fe;margin-top:.2rem">
-            Industrial WebGL Process Engineering Explorer · Detailed Equipment Assemblies · Live Simulation Telemetry Bus
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     # Precompute balances and streams
     all_streams = compute_all_streams(dm)
     plant_balance = compute_plant_material_balance(dm)
