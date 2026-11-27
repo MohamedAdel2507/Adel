@@ -71,6 +71,7 @@ from core.process_controller import run_simulation
 from core.validation import validate_inputs
 from core import ui_components as ui
 from core import math_documentation as md
+from core import plant_3d as p3d
 from modules import module_01_feedstock as m01
 from modules import module_02_process_yield as m02
 from modules import module_03_energy_utilities as m03
@@ -125,11 +126,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------- Main Navigation Tabs -----------------
-tab_home, tab_setup, tab_run, tab_dash, tab_reports, tab_assump, tab_math = st.tabs([
+tab_home, tab_setup, tab_run, tab_dash, tab_3d, tab_reports, tab_assump, tab_math = st.tabs([
     "🏠 Overview & Flowsheet",
     "⚙️ Process Setup & Parameters",
     "▶️ Execution Console",
     "📊 Engineering Analytics",
+    "🏭 3D Process Plant & Digital Twin",
     "📄 Technical Reports & Exports",
     "🔍 Quality & Ledger Audits",
     "📐 Mathematical Model & Engineering Fundamentals"
@@ -548,7 +550,13 @@ with tab_dash:
             show_df(pretty(T["economics"]["Economic results"]))
 
 # ══════════════════════════════════════════════════════════════════════════
-# TAB 5: REPORTS & EXPORTS
+# TAB 5: 3D PROCESS PLANT & DIGITAL TWIN
+# ══════════════════════════════════════════════════════════════════════════
+with tab_3d:
+    p3d.render_3d_plant_section(dm)
+
+# ══════════════════════════════════════════════════════════════════════════
+# TAB 6: REPORTS & EXPORTS
 # ══════════════════════════════════════════════════════════════════════════
 with tab_reports:
     if not ready:
