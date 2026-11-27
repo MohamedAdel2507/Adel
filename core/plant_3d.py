@@ -391,121 +391,124 @@ body{{background:#0a0d14;overflow:hidden;font-family:-apple-system,BlinkMacSyste
 (function(){{
 // ─── RENDERER SETUP ──────────────────────────────────────────────────────
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({{canvas, antialias:true, alpha:false}});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+const getW = () => canvas.clientWidth || window.innerWidth || 800;
+const getH = () => canvas.clientHeight || window.innerHeight || 600;
+
+const renderer = new THREE.WebGLRenderer({{canvas, antialias:true, alpha:false, powerPreference:'high-performance'}});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(getW(), getH());
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.4;
+renderer.toneMappingExposure = 1.2;
 
 // ─── SCENE & CAMERA ──────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0d14);
-scene.fog = new THREE.Fog(0x0a0d14, 60, 160);
+scene.background = new THREE.Color(0x111827);
+scene.fog = new THREE.Fog(0x111827, 90, 240);
 
-const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 500);
+const initW = getW(), initH = getH();
+const aspect = (initW > 0 && initH > 0) ? (initW / initH) : (16 / 9);
+const camera = new THREE.PerspectiveCamera(42, aspect, 0.1, 1000);
 camera.position.set(0, 25, 50);
 
 const controls = new THREE.OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 controls.minPolarAngle = 0;
-controls.maxPolarAngle = Math.PI*0.88;
+controls.maxPolarAngle = Math.PI * 0.88;
 controls.minDistance = 2;
-controls.maxDistance = 200;
+controls.maxDistance = 250;
 
 // ─── ENVIRONMENT / LIGHTING ───────────────────────────────────────────────
-const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0x1e293b, 1.4);
-hemiLight.position.set(0, 50, 0);
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 1.2);
+hemiLight.position.set(0, 60, 0);
 scene.add(hemiLight);
 
 // Key light – warm overhead
-const keyLight = new THREE.DirectionalLight(0xfff4e0, 2.2);
-keyLight.position.set(20, 40, 25);
+const keyLight = new THREE.DirectionalLight(0xfff7ed, 1.8);
+keyLight.position.set(25, 45, 30);
 keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(2048,2048);
+keyLight.shadow.mapSize.set(2048, 2048);
 keyLight.shadow.camera.near = 2;
-keyLight.shadow.camera.far = 160;
-keyLight.shadow.camera.left = keyLight.shadow.camera.bottom = -60;
-keyLight.shadow.camera.right = keyLight.shadow.camera.top = 60;
+keyLight.shadow.camera.far = 180;
+keyLight.shadow.camera.left = keyLight.shadow.camera.bottom = -70;
+keyLight.shadow.camera.right = keyLight.shadow.camera.top = 70;
 scene.add(keyLight);
 
 // Fill light – cool blue side
-const fillLight = new THREE.DirectionalLight(0x9bb8d4, 1.0);
-fillLight.position.set(-30, 20, -20);
+const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.9);
+fillLight.position.set(-35, 25, -25);
 scene.add(fillLight);
 
 // Back rim
-const rimLight = new THREE.DirectionalLight(0xffeedd, 0.6);
-rimLight.position.set(5, 10, -40);
+const rimLight = new THREE.DirectionalLight(0xfef08a, 0.6);
+rimLight.position.set(5, 15, -45);
 scene.add(rimLight);
 
-// Ambient
-scene.add(new THREE.AmbientLight(0x334466, 1.5));
-
 // ─── GROUND PLANE ─────────────────────────────────────────────────────────
-const groundMat = new THREE.MeshStandardMaterial({{color:0x0d1520, roughness:0.9, metalness:0.05}});
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(200,120), groundMat);
-ground.rotation.x = -Math.PI/2;
+const groundMat = new THREE.MeshStandardMaterial({{color:0x1e293b, roughness:0.85, metalness:0.1}});
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 120), groundMat);
+ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.05;
 ground.receiveShadow = true;
 scene.add(ground);
 
 // Grid overlay
-const grid = new THREE.GridHelper(200,100,0x1e3a5f,0x162032);
+const grid = new THREE.GridHelper(200, 100, 0x3b82f6, 0x334155);
 grid.position.y = 0;
 scene.add(grid);
 
 // Safety walkway stripes
-function stripe(x1,z1,x2,z2){{
-  const len = Math.hypot(x2-x1,z2-z1);
-  const ang = Math.atan2(z2-z1,x2-x1);
+function stripe(x1, z1, x2, z2){{
+  const len = Math.hypot(x2 - x1, z2 - z1);
+  const ang = Math.atan2(z2 - z1, x2 - x1);
   const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(len,0.3),
-    new THREE.MeshBasicMaterial({{color:0xf6c90e, depthWrite:false}})
+    new THREE.PlaneGeometry(len, 0.3),
+    new THREE.MeshBasicMaterial({{color:0xfacc15, depthWrite:false}})
   );
-  m.rotation.x = -Math.PI/2;
+  m.rotation.x = -Math.PI / 2;
   m.rotation.z = -ang;
-  m.position.set((x1+x2)/2, 0.01, (z1+z2)/2);
+  m.position.set((x1 + x2) / 2, 0.01, (z1 + z2) / 2);
   scene.add(m);
 }}
-stripe(-38,8,22,8); stripe(-38,-8,22,-8);
-stripe(-38,24,22,24); stripe(-38,-24,22,-24);
+stripe(-38, 8, 22, 8); stripe(-38, -8, 22, -8);
+stripe(-38, 24, 22, 24); stripe(-38, -24, 22, -24);
 
-// ─── PBR MATERIAL LIBRARY ─────────────────────────────────────────────────
+// ─── PBR MATERIAL LIBRARY (All with DoubleSide for cutaways) ─────────────
 const M = {{
-  ss316   : new THREE.MeshStandardMaterial({{color:0xc8cdd4, metalness:0.90, roughness:0.20, envMapIntensity:1.2}}),
-  ssBrushed: new THREE.MeshStandardMaterial({{color:0x9fa8b0, metalness:0.80, roughness:0.40, envMapIntensity:1.0}}),
-  cs      : new THREE.MeshStandardMaterial({{color:0x4a5568, metalness:0.75, roughness:0.50}}),
-  ci      : new THREE.MeshStandardMaterial({{color:0x2d3748, metalness:0.60, roughness:0.65}}),
-  insul   : new THREE.MeshStandardMaterial({{color:0xd4c5a9, metalness:0.05, roughness:0.90}}),
-  copper  : new THREE.MeshStandardMaterial({{color:0xc07830, metalness:0.88, roughness:0.25, envMapIntensity:1.3}}),
-  yellow  : new THREE.MeshStandardMaterial({{color:0xf6c90e, metalness:0.30, roughness:0.45}}),
-  blue    : new THREE.MeshStandardMaterial({{color:0x1a56db, metalness:0.55, roughness:0.35}}),
-  red     : new THREE.MeshStandardMaterial({{color:0xc53030, metalness:0.55, roughness:0.40}}),
-  conc    : new THREE.MeshStandardMaterial({{color:0x4a5568, roughness:0.95, metalness:0.05}}),
-  glass   : new THREE.MeshPhysicalMaterial({{
-    color:0x90cdf4, transparent:true, opacity:0.28,
-    roughness:0.05, metalness:0.1, transmission:0.75,
+  ss316    : new THREE.MeshStandardMaterial({{color:0xd1d5db, metalness:0.85, roughness:0.22, side:THREE.DoubleSide}}),
+  ssBrushed: new THREE.MeshStandardMaterial({{color:0x9ca3af, metalness:0.80, roughness:0.35, side:THREE.DoubleSide}}),
+  cs       : new THREE.MeshStandardMaterial({{color:0x4b5563, metalness:0.75, roughness:0.45, side:THREE.DoubleSide}}),
+  ci       : new THREE.MeshStandardMaterial({{color:0x374151, metalness:0.60, roughness:0.60, side:THREE.DoubleSide}}),
+  insul    : new THREE.MeshStandardMaterial({{color:0xd4c5a9, metalness:0.10, roughness:0.85, side:THREE.DoubleSide}}),
+  copper   : new THREE.MeshStandardMaterial({{color:0xd97706, metalness:0.85, roughness:0.28, side:THREE.DoubleSide}}),
+  yellow   : new THREE.MeshStandardMaterial({{color:0xeab308, metalness:0.30, roughness:0.45, side:THREE.DoubleSide}}),
+  blue     : new THREE.MeshStandardMaterial({{color:0x2563eb, metalness:0.55, roughness:0.35, side:THREE.DoubleSide}}),
+  red      : new THREE.MeshStandardMaterial({{color:0xdc2626, metalness:0.55, roughness:0.40, side:THREE.DoubleSide}}),
+  conc     : new THREE.MeshStandardMaterial({{color:0x475569, roughness:0.95, metalness:0.05, side:THREE.DoubleSide}}),
+  glass    : new THREE.MeshPhysicalMaterial({{
+    color:0x93c5fd, transparent:true, opacity:0.35,
+    roughness:0.1, metalness:0.1, transmission:0.75,
     ior:1.45, depthWrite:false, side:THREE.DoubleSide
   }}),
   highlight: new THREE.MeshStandardMaterial({{
-    color:0x38a169, emissive:0x276749, emissiveIntensity:0.45,
-    metalness:0.80, roughness:0.18, envMapIntensity:1.4
+    color:0x10b981, emissive:0x059669, emissiveIntensity:0.55,
+    metalness:0.75, roughness:0.22, side:THREE.DoubleSide
   }}),
-  // per-unit accent colours
-  T101col : new THREE.MeshStandardMaterial({{color:0x276749, metalness:0.75, roughness:0.30}}),
-  D101col : new THREE.MeshStandardMaterial({{color:0x744210, metalness:0.70, roughness:0.35}}),
-  M101col : new THREE.MeshStandardMaterial({{color:0x2d3748, metalness:0.72, roughness:0.42}}),
-  T102col : new THREE.MeshStandardMaterial({{color:0x1a56db, metalness:0.80, roughness:0.25}}),
-  R101col : new THREE.MeshStandardMaterial({{color:0x9b2c2c, metalness:0.78, roughness:0.28}}),
-  F101col : new THREE.MeshStandardMaterial({{color:0x2c5282, metalness:0.72, roughness:0.38}}),
-  E101col : new THREE.MeshStandardMaterial({{color:0x276749, metalness:0.82, roughness:0.20}}),
-  S101col : new THREE.MeshStandardMaterial({{color:0x065666, metalness:0.84, roughness:0.22}}),
-  C101col : new THREE.MeshStandardMaterial({{color:0x1a365d, metalness:0.80, roughness:0.25}}),
-  V101col : new THREE.MeshStandardMaterial({{color:0x322659, metalness:0.80, roughness:0.25}}),
+  // per-unit accent colours (DoubleSide ensures inner chamber is always visible)
+  T101col  : new THREE.MeshStandardMaterial({{color:0x15803d, metalness:0.75, roughness:0.30, side:THREE.DoubleSide}}),
+  D101col  : new THREE.MeshStandardMaterial({{color:0xb45309, metalness:0.70, roughness:0.35, side:THREE.DoubleSide}}),
+  M101col  : new THREE.MeshStandardMaterial({{color:0x334155, metalness:0.72, roughness:0.42, side:THREE.DoubleSide}}),
+  T102col  : new THREE.MeshStandardMaterial({{color:0x0284c7, metalness:0.80, roughness:0.25, side:THREE.DoubleSide}}),
+  R101col  : new THREE.MeshStandardMaterial({{color:0xb91c1c, metalness:0.78, roughness:0.28, side:THREE.DoubleSide}}),
+  F101col  : new THREE.MeshStandardMaterial({{color:0x1d4ed8, metalness:0.72, roughness:0.38, side:THREE.DoubleSide}}),
+  E101col  : new THREE.MeshStandardMaterial({{color:0x16a34a, metalness:0.82, roughness:0.20, side:THREE.DoubleSide}}),
+  S101col  : new THREE.MeshStandardMaterial({{color:0x0f766e, metalness:0.84, roughness:0.22, side:THREE.DoubleSide}}),
+  C101col  : new THREE.MeshStandardMaterial({{color:0x1e40af, metalness:0.80, roughness:0.25, side:THREE.DoubleSide}}),
+  V101col  : new THREE.MeshStandardMaterial({{color:0x4338ca, metalness:0.80, roughness:0.25, side:THREE.DoubleSide}}),
 }};
 
 const isCut = {cutaway_js};
@@ -513,16 +516,15 @@ const selId = "{selected_eq_id}";
 const isSingle = ("{view_mode}" === "single_equipment");
 
 function selMat(id, base){{ return selId===id ? M.highlight : base; }}
-// Cutaway: open the FRONT half (π to 2π covers back half, leaving front half visible)
-// When isCut=true: phiStart=Math.PI, phiLength=Math.PI  → reveals front interior clearly
-const CW = Math.PI;      // cutaway phi start
-const CL = Math.PI;      // cutaway phi length (180 deg = open front face)
-const FW = 0;            // full phi start
-const FL = Math.PI*2;    // full phi length
+// Cutaway angles: Generates 270 deg of cylinder, leaving a 90 deg front window
+const CW = 0;              // cutaway phi start
+const CL = Math.PI * 1.5;  // 270 deg arc leaves front 90 deg quadrant open
+const FW = 0;              // full phi start
+const FL = Math.PI * 2;    // full 360 deg
 
 function cylMat(id, base){{
-  if(selId===id) return M.highlight;
-  return isCut ? M.glass : base;
+  if(selId===id && !isCut) return M.highlight;
+  return isCut ? (selId===id ? base : M.glass) : base;
 }}
 function phi(open){{ return open&&isCut ? [CW,CL] : [FW,FL]; }}
 
@@ -1561,21 +1563,28 @@ controls.update();
 // ─── RENDER LOOP ──────────────────────────────────────────────────────────
 function animate(){{
   requestAnimationFrame(animate);
-  animFns.forEach(f=>f());
+  animFns.forEach(f=>{{ try{{ f(); }}catch(e){{}} }});
   particles.forEach(p=>{{
     p.t+=p.s; if(p.t>1) p.t=0;
-    p.m.position.copy(p.c.getPointAt(p.t));
+    try{{ p.m.position.copy(p.c.getPointAt(p.t)); }}catch(e){{}}
   }});
   controls.update();
   renderer.render(scene,camera);
 }}
 animate();
 
-window.addEventListener('resize',()=>{{
-  camera.aspect=window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth,window.innerHeight);
-}});
+function onWinResize(){{
+  const nw = canvas.clientWidth || window.innerWidth || 800;
+  const nh = canvas.clientHeight || window.innerHeight || 600;
+  if (nw > 0 && nh > 0) {{
+    camera.aspect = nw / nh;
+    camera.updateProjectionMatrix();
+    renderer.setSize(nw, nh);
+  }}
+}}
+window.addEventListener('resize', onWinResize);
+setTimeout(onWinResize, 200);
+setTimeout(onWinResize, 800);
 }})();
 </script>
 </body>
