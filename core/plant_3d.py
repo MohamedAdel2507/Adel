@@ -516,9 +516,9 @@ const selId = "{selected_eq_id}";
 const isSingle = ("{view_mode}" === "single_equipment");
 
 function selMat(id, base){{ return selId===id ? M.highlight : base; }}
-// Cutaway angles: Generates 270 deg of cylinder, leaving a 90 deg front window
-const CW = 0;              // cutaway phi start
-const CL = Math.PI * 1.5;  // 270 deg arc leaves front 90 deg quadrant open
+// Cutaway angles: Generates 270 deg of cylinder, leaving a 90 deg front-right window
+const CW = Math.PI * 0.5;  // cutaway phi start (opens directly toward isometric/front view)
+const CL = Math.PI * 1.5;  // 270 deg arc leaves front viewing quadrant open
 const FW = 0;              // full phi start
 const FL = Math.PI * 2;    // full 360 deg
 
@@ -952,146 +952,392 @@ function buildT102(ox,oz){{
 }}
 
 // ══════════════════════════════════════════════════════════════════════════
-// 5. R-101  HIGH-PRESSURE PRETREATMENT REACTOR  ← primary focus unit
-//    Skirt-mounted vertical CSTR, jacket, flanged top head, anchor agitator
+// 5. R-101  HIGH-PRESSURE INDUSTRIAL PRETREATMENT REACTOR (REFERENCE MODEL)
+//    ASME VIII CSTR, steam jacket, dished heads, 28-stud girth flange,
+//    skirt with gussets & anchor bolts, lantern stool, API 682 seal & pot,
+//    motor with cooling fins, stationary wall baffles, rotating PBT & anchor
 // ══════════════════════════════════════════════════════════════════════════
 function buildR101(ox,oz){{
-  const g=new THREE.Group(); g.name='R-101'; g.position.set(ox,0,oz);
-  const col=selMat('R-101',M.R101col);
-  const shellMat=cylMat('R-101',M.R101col);
+  const g = new THREE.Group(); g.name = 'R-101'; g.position.set(ox, 0, oz);
+  const col = selMat('R-101', M.R101col);
+  const shellMat = cylMat('R-101', M.R101col);
 
-  const R=1.9;    // vessel radius
-  const H=4.2;    // straight shell height
-  const skirtH=1.6; // short skirt (NOT dominating)
-  const padH=0.3;
-  // Key Y reference:  vessel shell occupies [base,base+H]
-  const base = padH + skirtH;      // bottom of cylindrical shell
-  const shY  = base + H/2;         // vessel centre (camera will target this)
-  const topY = base + H;            // top of shell
+  const R = 1.9;        // vessel radius (m)
+  const H = 4.2;        // straight shell height (m)
+  const skirtH = 1.5;   // structural support skirt height (m)
+  const padH = 0.3;     // reinforced concrete foundation height (m)
 
-  pad(g,5.5,5.5,padH);
+  const base = padH + skirtH;   // lower head tangent line (y = 1.8m)
+  const shY  = base + H/2;      // vessel centerline (y = 3.9m)
+  const topY = base + H;        // upper body flange baseline (y = 6.0m)
 
-  // ── Cylindrical skirt support (short, structural) ──
-  add(g,new THREE.CylinderGeometry(R*0.72,R*0.78,skirtH,32),M.cs, 0,padH+skirtH/2,0);
-  // Skirt access manhole
-  add(g,cyl(0.35,0.22,16),M.cs, 0,padH+skirtH/2, R*0.72, Math.PI/2,0,0);
-  // Anchor bolt ring (visible flats around skirt base)
-  for(let b=0;b<16;b++){{
-    const a=b*Math.PI/8;
-    add(g,box(0.12,0.28,0.12),M.cs, Math.cos(a)*(R*0.78+0.08),padH+0.14,Math.sin(a)*(R*0.78+0.08));
+  const [ps, pl] = phi(true);   // cutaway phi start & length
+
+  // ── 1. REINFORCED CONCRETE FOUNDATION PAD ──
+  pad(g, 5.8, 5.8, padH);
+  // Grout chamfer bevel ring
+  add(g, cyl(2.2, 0.06, 32), M.cs, 0, padH + 0.03, 0);
+
+  // ── 2. CYLINDRICAL SUPPORT SKIRT WITH BASE RING & GUSSETS ──
+  const rSkirt = R * 0.84; // 1.60m
+  // Base flange ring (annular plate)
+  add(g, cyl(rSkirt + 0.22, 0.08, 36), M.cs, 0, padH + 0.04, 0);
+
+  // Support skirt rolled shell (open front in cutaway to view bottom discharge assembly)
+  const skirtGeo = new THREE.CylinderGeometry(rSkirt, rSkirt, skirtH, 36, 1, true, ps, pl);
+  const skirtMesh = new THREE.Mesh(skirtGeo, M.cs);
+  skirtMesh.position.set(0, padH + skirtH/2, 0);
+  skirtMesh.castShadow = true;
+  g.add(skirtMesh);
+
+  // 12 Skirt Base Radial Gusset Plates & Anchor Stud Assemblies
+  for(let i = 0; i < 12; i++){{
+    const a = i * Math.PI * 2 / 12;
+    const gx = Math.cos(a) * (rSkirt + 0.08);
+    const gz = Math.sin(a) * (rSkirt + 0.08);
+    // Triangular gusset plate
+    add(g, box(0.04, 0.40, 0.18), M.cs, gx, padH + 0.20, gz, 0, -a, 0);
+    // Anchor bolt stud + double hex nut
+    const ba = a + Math.PI / 12;
+    const bx = Math.cos(ba) * (rSkirt + 0.14);
+    const bz = Math.sin(ba) * (rSkirt + 0.14);
+    add(g, cyl(0.026, 0.28, 8), M.ss316, bx, padH + 0.14, bz);
+    add(g, cyl(0.048, 0.07, 6), M.cs, bx, padH + 0.24, bz); // hex nut
   }}
 
-  // ── Ellipsoidal bottom head ──
-  // SphereGeometry with phiStart for cutaway
-  const [ps,pl]=phi(true);
-  const botHead=new THREE.Mesh(sphere(R,ps,pl,Math.PI/2,Math.PI/2.15),shellMat);
-  botHead.position.set(0,base,0); botHead.castShadow=true; g.add(botHead);
+  // Skirt Access Manhole & Collar Ring (at angle 35 deg)
+  const mAng = Math.PI * 0.20;
+  const smX = Math.cos(mAng) * rSkirt;
+  const smZ = Math.sin(mAng) * rSkirt;
+  add(g, cyl(0.32, 0.22, 20), M.cs, smX, padH + skirtH * 0.52, smZ, Math.PI/2, 0, -mAng);
+  add(g, torus(0.33, 0.035, 8, 20), M.cs, smX, padH + skirtH * 0.52, smZ, 0, mAng, 0);
+  // Grounding earth boss lug
+  add(g, box(0.08, 0.08, 0.06), M.copper, -(rSkirt + 0.04), padH + 0.12, 0);
+  add(g, cyl(0.015, 0.35, 8), M.copper, -(rSkirt + 0.06), padH + 0.08, 0);
 
-  // ── Main pressure vessel cylindrical shell ──
-  const shell=new THREE.Mesh(
-    new THREE.CylinderGeometry(R,R,H,36,1,true,ps,pl), shellMat
+  // ── 3. ASME 2:1 ELLIPSOIDAL BOTTOM HEAD ──
+  const botHeadGeo = sphere(R, ps, pl, Math.PI/2, Math.PI/2, 36);
+  const botHead = new THREE.Mesh(botHeadGeo, shellMat);
+  botHead.scale.set(1, 0.50, 1);
+  botHead.position.set(0, base, 0);
+  botHead.castShadow = true;
+  g.add(botHead);
+  // Tangent weld seam circumferential band
+  add(g, cyl(R + 0.02, 0.06, 36), M.cs, 0, base, 0);
+
+  // ── 4. MAIN CYLINDRICAL PRESSURE VESSEL SHELL ──
+  const shellGeo = new THREE.CylinderGeometry(R, R, H, 36, 1, true, ps, pl);
+  const shell = new THREE.Mesh(shellGeo, shellMat);
+  shell.position.set(0, shY, 0);
+  shell.castShadow = true;
+  g.add(shell);
+
+  // Realistic inner shell wall lining & machined cutaway seam lips
+  if(isCut){{
+    const inShell = new THREE.Mesh(
+      new THREE.CylinderGeometry(R - 0.04, R - 0.04, H, 36, 1, true, ps, pl),
+      M.ssBrushed
+    );
+    inShell.position.set(0, shY, 0);
+    g.add(inShell);
+    // Machined wall thickness seam edges along cutaway angles CW and CL
+    for(const cAng of [CW, CL]){{
+      const ex = Math.cos(cAng) * (R - 0.02);
+      const ez = -Math.sin(cAng) * (R - 0.02);
+      add(g, box(0.04, H, 0.04), M.ss316, ex, shY, ez, 0, cAng, 0);
+    }}
+  }}
+
+  // ── 5. EXTERNAL STEAM HEATING JACKET & SPIRAL BAFFLING ──
+  const jH = H * 0.70;        // 2.94m jacket height
+  const jR = R + 0.15;        // 2.05m jacket outer radius
+  const jacketMat = isCut ? M.glass : M.insul;
+  const jacket = new THREE.Mesh(
+    new THREE.CylinderGeometry(jR, jR, jH, 36, 1, true, ps, pl),
+    jacketMat
   );
-  shell.position.set(0,shY,0); shell.castShadow=true; g.add(shell);
+  jacket.position.set(0, base + jH/2, 0);
+  jacket.castShadow = true;
+  g.add(jacket);
 
-  // ── External steam heating jacket (bottom 68% of shell) ──
-  const jH=H*0.68, jR=R+0.14;
-  const jacketMat=isCut?M.glass:M.insul;
-  // Show jacket as separate colour when no cutaway, as insulation-coloured sleeve
-  const jacket=new THREE.Mesh(
-    new THREE.CylinderGeometry(jR,jR,jH,36,1,true,ps,pl), jacketMat
-  );
-  jacket.position.set(0, base+jH/2, 0); jacket.castShadow=true; g.add(jacket);
-  // Jacket band rings
-  add(g,cyl(jR+0.04,0.09),M.cs,0,base+jH,0);
-  add(g,cyl(jR+0.04,0.09),M.cs,0,base+0.04,0);
-  // Steam inlet/condensate outlet nozzles on jacket
-  nozzle(g,0.11,0.42, jR,base+jH*0.75,0,'x');
-  nozzle(g,0.11,0.42, jR,base+jH*0.18,0,'x');
+  // Jacket top closure ring & bottom weld band
+  add(g, cyl(jR + 0.03, 0.08, 36), M.cs, 0, base + jH, 0);
+  add(g, cyl(jR + 0.02, 0.08, 36), M.cs, 0, base + 0.04, 0);
 
-  // ── Flanged top head joint: 24 visible stud bolts ──
-  const fY=topY+0.05;
-  add(g,cyl(R+0.14,0.14),M.cs,0,fY,0);  // top ring flange
-  for(let b=0;b<24;b++){{
-    const a=b*Math.PI*2/24;
-    add(g,cyl(0.045,0.28,8),M.ss316,Math.cos(a)*(R+0.14),fY,Math.sin(a)*(R+0.14));
+  // External vacuum / stiffener channel rings on jacket body
+  add(g, cyl(jR + 0.04, 0.09, 36), M.cs, 0, base + jH * 0.36, 0);
+  add(g, cyl(jR + 0.04, 0.09, 36), M.cs, 0, base + jH * 0.72, 0);
+
+  // Internal spiral steam circulation guide baffles (revealed in cutaway)
+  if(isCut){{
+    for(let k = 1; k <= 5; k++){{
+      const ringY = base + jH * (k / 6);
+      const sBfl = new THREE.Mesh(
+        new THREE.CylinderGeometry(R + 0.07, R + 0.07, 0.05, 32, 1, true, ps, pl),
+        M.copper
+      );
+      sBfl.position.set(0, ringY, 0);
+      g.add(sBfl);
+    }}
   }}
 
-  // ── Ellipsoidal top head ──
-  const topHead=new THREE.Mesh(sphere(R,ps,pl,0,Math.PI/2.15),shellMat);
-  topHead.position.set(0,topY+0.07,0); topHead.castShadow=true; g.add(topHead);
+  // Jacket Steam Supply Nozzle & Cast Iron Isolation Valve (Upper Section)
+  const stmY = base + jH * 0.82;
+  nozzle(g, 0.11, 0.44, jR, stmY, 0, 'x');
+  // Steam valve body, bonnet, and red handwheel
+  add(g, box(0.24, 0.24, 0.20), M.red, jR + 0.32, stmY, 0);
+  add(g, cyl(0.06, 0.18, 10), M.cs, jR + 0.32, stmY + 0.18, 0);
+  add(g, torus(0.14, 0.022, 8, 16), M.red, jR + 0.32, stmY + 0.28, 0, Math.PI/2, 0, 0);
 
-  // ── Heavy top drive (motor + gearbox) ──
-  motorDrive(g,0,topY+0.07+R*0.5+0.3,0,1.3);
+  // Jacket Condensate Return Nozzle & Steam Trap Manifold (Lower Section)
+  const cndY = base + jH * 0.18;
+  nozzle(g, 0.09, 0.44, jR, cndY, 0, 'x');
+  add(g, box(0.20, 0.20, 0.18), M.blue, jR + 0.32, cndY, 0);
+  add(g, cyl(0.05, 0.15, 10), M.cs, jR + 0.32, cndY - 0.14, 0);
 
-  // ── Mechanical seal housing (small cylinder below motor) ──
-  add(g,cyl(0.22,0.35,16),M.ssBrushed, 0,topY+0.07+R*0.5+0.1,0);
-  // Seal barrier pot
-  add(g,cyl(0.16,0.72,16),M.ssBrushed, R*0.55,topY+0.07+R*0.5+0.5, R*0.3);
+  // ── 6. ASME BODY GIRTH FLANGE WITH 28 STUD BOLTS & GASKET ──
+  const fY = topY + 0.07;
+  // Vessel shell flange ring
+  add(g, cyl(R + 0.16, 0.12, 36), M.cs, 0, fY, 0);
+  // Mating top head flange ring
+  add(g, cyl(R + 0.16, 0.12, 36), M.cs, 0, fY + 0.14, 0);
+  // Intermediate spiral-wound metallic gasket
+  add(g, cyl(R + 0.06, 0.02, 36), M.copper, 0, fY + 0.07, 0);
 
-  // ── INTERNAL COMPONENTS (anchor agitator + baffles + thermowells) ──
-  const internalGrp=new THREE.Group();
-  internalGrp.position.set(0,shY,0);
-
-  // Agitator shaft
-  const aShaft=new THREE.Mesh(cyl(0.085,H+0.6),M.ss316);
-  internalGrp.add(aShaft);
-
-  // Anchor frame: 2 vertical sweep arms + horizontal cross-bow
-  const armMat=M.ss316;
-  // Left arm
-  const armL=new THREE.Mesh(box(0.12,H*0.72,0.18),armMat);
-  armL.position.set(-(R-0.18),-H*0.1,0); internalGrp.add(armL);
-  // Right arm
-  const armR=new THREE.Mesh(box(0.12,H*0.72,0.18),armMat);
-  armR.position.set( (R-0.18),-H*0.1,0); internalGrp.add(armR);
-  // Top connecting bar
-  const topBar=new THREE.Mesh(box(R*1.75,0.12,0.18),armMat);
-  topBar.position.set(0,H*0.26,0); internalGrp.add(topBar);
-  // Bottom cross-bow
-  const bow=new THREE.Mesh(box(R*1.75,0.12,0.22),armMat);
-  bow.position.set(0,-H*0.44,0); internalGrp.add(bow);
-  // PTFE wall wiper blades (highly visible copper contrast)
-  for(let wy of[-H*0.35,-H*0.1,H*0.15]){{
-    const wiperL=new THREE.Mesh(box(0.14,0.3,0.10),M.copper);
-    wiperL.position.set(-(R-0.07),wy,0); internalGrp.add(wiperL);
-    const wiperR=new THREE.Mesh(box(0.14,0.3,0.10),M.copper);
-    wiperR.position.set( (R-0.07),wy,0); internalGrp.add(wiperR);
+  // 28 High-tensile stud bolts with double hex nuts
+  const bR = R + 0.09;
+  for(let b = 0; b < 28; b++){{
+    const a = b * Math.PI * 2 / 28;
+    const bx = Math.cos(a) * bR;
+    const bz = Math.sin(a) * bR;
+    add(g, cyl(0.030, 0.34, 8), M.ss316, bx, fY + 0.07, bz);
+    add(g, cyl(0.052, 0.065, 6), M.cs, bx, fY + 0.22, bz); // top nut
+    add(g, cyl(0.052, 0.065, 6), M.cs, bx, fY - 0.08, bz); // bottom nut
   }}
-  // Rear wall agitator brace
-  const rear=new THREE.Mesh(box(0.12,H*0.70,0.18),armMat);
-  rear.position.set(0,-H*0.1,-(R-0.18)); internalGrp.add(rear);
 
-  // 4 vertical anti-vortex baffles
-  for(let i=0;i<4;i++){{
-    const a=i*Math.PI/2+Math.PI/4;
-    const bfl=new THREE.Mesh(box(0.28,H*0.82,0.05),M.ssBrushed);
-    bfl.position.set(Math.cos(a)*(R-0.05),0,Math.sin(a)*(R-0.05));
-    bfl.rotation.y=-a; internalGrp.add(bfl);
+  // ── 7. ASME 2:1 ELLIPSOIDAL TOP DISHED HEAD ──
+  const topHeadGeo = sphere(R, ps, pl, 0, Math.PI/2, 36);
+  const topHead = new THREE.Mesh(topHeadGeo, shellMat);
+  topHead.scale.set(1, 0.50, 1);
+  topHead.position.set(0, fY + 0.18, 0);
+  topHead.castShadow = true;
+  g.add(topHead);
+
+  const headApexY = fY + 0.18 + R * 0.50; // top head apex (y ~ 7.15m)
+
+  // Heavy Rigging / Crane Lifting Lugs (at 90 deg and 270 deg on top head)
+  for(const sign of [-1, 1]){{
+    const lugZ = sign * (R * 0.72);
+    add(g, box(0.08, 0.44, 0.32), M.cs, 0, headApexY - 0.15, lugZ);
+    add(g, torus(0.08, 0.025, 8, 16), M.ss316, 0, headApexY + 0.05, lugZ, 0, Math.PI/2, 0);
+  }}
+
+  // ── 8. PROCESS NOZZLES, MANWAY & INSTRUMENTATION ──
+
+  // Feed Slurry Inlet Nozzle (receiving pipe from T-102 at y = 3.8m)
+  const inY = 3.8;
+  const inX = -(R + 0.15);
+  // Wall reinforcing pad plate
+  add(g, cyl(0.28, 0.04, 20), M.cs, inX + 0.02, inY, 0, 0, 0, Math.PI/2);
+  nozzle(g, 0.14, 0.45, inX, inY, 0, '-x');
+  // Actuated feed isolation valve
+  add(g, box(0.28, 0.30, 0.26), M.red, inX - 0.32, inY, 0);
+  add(g, cyl(0.18, 0.22, 16), M.yellow, inX - 0.32, inY + 0.24, 0); // actuator dome
+
+  // Bottom Slurry Discharge & Emergency Blowdown (connecting to F-101 pipe at y = 1.4m)
+  const botDishLowest = base - R * 0.50; // ~0.85m
+  // Center drop nozzle through skirt
+  add(g, cyl(0.15, 0.60, 16), M.ss316, 0, botDishLowest - 0.25, 0);
+  // Bottom-ram flush discharge valve body at y = 1.4m
+  add(g, box(0.38, 0.42, 0.38), M.red, 0, 1.4, 0);
+  add(g, cyl(0.12, 0.55, 16), M.cs, 0.35, 1.4, 0, 0, 0, Math.PI/2); // spool leading to outlet pipe
+  add(g, torus(0.16, 0.025, 8, 16), M.cs, -0.28, 1.4, 0, 0, Math.PI/2, 0); // manual handwheel
+
+  // Top Manway DN500 (20") with Swivel Davit Arm (mounted on top head at 32 deg)
+  const manAng = Math.PI * 0.18;
+  const manR = R * 0.55;
+  const mwX = Math.cos(manAng) * manR;
+  const mwZ = Math.sin(manAng) * manR;
+  const mwY = headApexY - 0.22;
+  // Manway flanged neck
+  add(g, cyl(0.32, 0.38, 24), M.ss316, mwX, mwY + 0.19, mwZ);
+  add(g, cyl(0.44, 0.10, 24), M.cs, mwX, mwY + 0.38, mwZ);    // neck flange
+  add(g, cyl(0.44, 0.08, 24), M.ss316, mwX, mwY + 0.46, mwZ); // blind cover
+  // 16 Manway cover bolts
+  for(let mb = 0; mb < 16; mb++){{
+    const mba = mb * Math.PI * 2 / 16;
+    add(g, cyl(0.024, 0.12, 6), M.cs, mwX + Math.cos(mba) * 0.38, mwY + 0.47, mwZ + Math.sin(mba) * 0.38);
+  }}
+  // Swivel Davit hinge post and arm
+  add(g, cyl(0.045, 0.65, 12), M.cs, mwX + 0.38, mwY + 0.32, mwZ + 0.15);
+  add(g, box(0.36, 0.06, 0.06), M.cs, mwX + 0.22, mwY + 0.62, mwZ + 0.08);
+  // Sight glass illumination port
+  add(g, cyl(0.12, 0.10, 16), M.glass, mwX, mwY + 0.52, mwZ);
+
+  // Safety Relief Valve (SRV) Assembly with Rupture Disc
+  const srvX = -R * 0.42;
+  const srvZ = -R * 0.40;
+  const srvBaseY = headApexY - 0.18;
+  nozzle(g, 0.09, 0.35, srvX, srvBaseY, srvZ, 'y');
+  // Rupture disc companion flanges
+  add(g, cyl(0.18, 0.07, 16), M.copper, srvX, srvBaseY + 0.38, srvZ);
+  // Angle safety valve body & bonnet
+  add(g, box(0.24, 0.26, 0.22), M.red, srvX, srvBaseY + 0.54, srvZ);
+  add(g, cyl(0.11, 0.52, 16), M.cs, srvX, srvBaseY + 0.90, srvZ); // spring bonnet
+  add(g, box(0.03, 0.24, 0.08), M.cs, srvX + 0.08, srvBaseY + 1.05, srvZ); // test lever
+  add(g, cyl(0.08, 0.45, 12), M.ss316, srvX + 0.24, srvBaseY + 0.54, srvZ, 0, 0, Math.PI/2); // vent discharge
+
+  // 3-Tier Side Instrument Thermowell Array with Weatherproof Transmitters
+  for(const twY of [base + 0.85, base + 2.10, base + 3.35]){{
+    nozzle(g, 0.07, 0.38, -(R + 0.15), twY, 0, '-x');
+    // Transmitter enclosure (blue NEMA 4X / EEx d body)
+    add(g, box(0.16, 0.20, 0.16), M.blue, -(R + 0.52), twY, 0);
+    // Local LCD face
+    add(g, cyl(0.065, 0.02, 16), M.cs, -(R + 0.61), twY, 0, 0, 0, Math.PI/2);
+    // Stainless conduit line
+    add(g, cyl(0.018, 0.28, 8), M.ss316, -(R + 0.52), twY - 0.20, 0);
+  }}
+
+  // ── 9. TOP DRIVE MOUNTING STOOL, MECHANICAL SEAL & GEARMOTOR ──
+
+  // Cast Steel Lantern Stool / Mounting Pedestal (open inspection windows)
+  const stoolBaseY = headApexY;
+  const stoolH = 0.85;
+  add(g, cyl(0.68, 0.09, 24), M.cs, 0, stoolBaseY + 0.045, 0); // bottom flange
+  add(g, cyl(0.68, 0.09, 24), M.cs, 0, stoolBaseY + stoolH - 0.045, 0); // top deck flange
+  // 4 Structural Pedestal Legs
+  for(let li = 0; li < 4; li++){{
+    const la = li * Math.PI / 2 + Math.PI / 4;
+    const lx = Math.cos(la) * 0.52;
+    const lz = Math.sin(la) * 0.52;
+    add(g, box(0.12, stoolH - 0.09, 0.16), M.cs, lx, stoolBaseY + stoolH/2, lz, 0, -la, 0);
+  }}
+
+  // Double Cartridge Mechanical Seal Housing (visible inside stool windows)
+  add(g, cyl(0.28, 0.44, 20), M.ssBrushed, 0, stoolBaseY + 0.26, 0);
+  // Rigid split muff coupling
+  add(g, cyl(0.19, 0.22, 16), M.ss316, 0, stoolBaseY + 0.60, 0);
+
+  // API Plan 53A Thermosyphon Barrier Fluid Reservoir Pot & Tubing
+  const potX = R * 0.52;
+  const potZ = -R * 0.32;
+  const potY = stoolBaseY + 0.55;
+  add(g, cyl(0.18, 0.78, 16), M.ssBrushed, potX, potY, potZ);
+  add(g, cyl(0.045, 0.42, 8), M.glass, potX + 0.16, potY, potZ); // sight level gauge
+  add(g, cyl(0.07, 0.04, 16), M.cs, potX, potY + 0.41, potZ);    // pressure gauge
+  // Stainless circulation tubing connecting pot to seal
+  add(g, cyl(0.016, 0.65, 8), M.ss316, potX * 0.5, potY - 0.20, potZ * 0.5, 0, 0, Math.PI/4);
+
+  // Industrial Heavy Ribbed Gearbox Reducer
+  const gbY = stoolBaseY + stoolH;
+  const gbH = 0.65;
+  add(g, box(0.96, gbH, 0.96), M.ci, 0, gbY + gbH/2, 0);
+  // Gearbox structural cooling ribs
+  for(let ri of [-0.38, 0, 0.38]){{
+    add(g, box(0.04, gbH * 0.9, 1.02), M.cs, ri, gbY + gbH/2, 0);
+    add(g, box(1.02, gbH * 0.9, 0.04), M.cs, 0, gbY + gbH/2, ri);
+  }}
+  // Oil level sight glass & air breather plug
+  add(g, cyl(0.06, 0.04, 12), M.copper, 0.49, gbY + 0.20, 0, 0, 0, Math.PI/2);
+  add(g, cyl(0.05, 0.12, 10), M.yellow, 0, gbY + gbH + 0.06, 0.35);
+
+  // TEFC High-Efficiency Induction Drive Motor
+  const motY = gbY + gbH;
+  const motH = 1.35;
+  const motR = 0.42;
+  // Stator body
+  add(g, cyl(motR, motH, 24), M.blue, 0, motY + motH/2, 0);
+  // 12 Longitudinal cooling fins around motor perimeter
+  for(let fi = 0; fi < 12; fi++){{
+    const fa = fi * Math.PI * 2 / 12;
+    const fx = Math.cos(fa) * (motR + 0.035);
+    const fz = Math.sin(fa) * (motR + 0.035);
+    add(g, box(0.025, motH * 0.88, 0.07), M.blue, fx, motY + motH/2, fz, 0, -fa, 0);
+  }}
+  // Top fan cowl / shroud
+  add(g, cyl(motR + 0.02, 0.26, 24), M.cs, 0, motY + motH + 0.13, 0);
+  // Terminal conduit junction box
+  add(g, box(0.24, 0.30, 0.22), M.yellow, motR + 0.11, motY + motH * 0.52, 0);
+  add(g, cyl(0.04, 0.12, 8), M.cs, motR + 0.24, motY + motH * 0.52, 0, 0, 0, Math.PI/2);
+
+  // ── 10. STATIONARY VESSEL INTERNALS (NEVER ROTATING) ──
+  // 4 Vertical Anti-Vortex Wall Baffles with Standoff Brackets
+  const bflW = 0.28;
+  const bflH = H * 0.82;
+  for(let bi = 0; bi < 4; bi++){{
+    const ba = bi * Math.PI / 2 + Math.PI / 4;
+    const bx = Math.cos(ba) * (R - 0.05);
+    const bz = Math.sin(ba) * (R - 0.05);
+    // Baffle plate
+    add(g, box(bflW, bflH, 0.035), M.ssBrushed, bx, shY, bz, 0, -ba, 0);
+    // Standoff support lugs
+    for(const ly of [shY - H * 0.32, shY, shY + H * 0.32]){{
+      const sx = Math.cos(ba) * (R - 0.025);
+      const sz = Math.sin(ba) * (R - 0.025);
+      add(g, box(0.05, 0.05, 0.05), M.ss316, sx, ly, sz, 0, -ba, 0);
+    }}
+  }}
+
+  // Internal Circular Toroidal Steam Sparger Ring (in bottom dished head)
+  const spargerY = base - R * 0.22;
+  add(g, torus(R * 0.65, 0.045, 12, 32), M.ss316, 0, spargerY, 0, Math.PI/2, 0, 0);
+  // Vertical steam feed downpipe to sparger
+  add(g, cyl(0.045, 1.2, 12), M.ss316, R * 0.65, spargerY + 0.60, 0);
+
+  // Internal Thermowell Deep Protection Sheath
+  add(g, cyl(0.035, H * 0.72, 12), M.ss316, -R * 0.35, shY, 0);
+
+  // ── 11. ROTATING AGITATOR ASSEMBLY (ANIMATION GROUP) ──
+  const internalGrp = new THREE.Group();
+  internalGrp.position.set(0, shY, 0);
+
+  // Solid Central Stainless Drive Shaft
+  const shaftTotalH = H + 1.2;
+  add(internalGrp, cyl(0.078, shaftTotalH, 20), M.ss316, 0, 0.2, 0);
+
+  // Upper Impeller: 4-Blade 45-deg Pitched-Blade Turbine (PBT)
+  const pbtHubY = H * 0.22;
+  add(internalGrp, cyl(0.20, 0.18, 16), M.ss316, 0, pbtHubY, 0); // clamp hub
+  for(let pi = 0; pi < 4; pi++){{
+    const pa = pi * Math.PI / 2;
+    add(internalGrp, box(0.68, 0.18, 0.025), M.ss316,
+      Math.cos(pa) * 0.44, pbtHubY, Math.sin(pa) * 0.44,
+      Math.PI / 4, -pa, 0); // 45 deg pitched hydrofoil blade
+  }}
+
+  // Lower Impeller: High-Viscosity Contoured Anchor Sweep with PTFE Wall Scrapers
+  const ancHubY = -H * 0.42;
+  add(internalGrp, cyl(0.24, 0.22, 16), M.ss316, 0, ancHubY, 0); // lower hub
+  // Heavy horizontal structural cross-beam
+  add(internalGrp, box(R * 1.76, 0.14, 0.15), M.ss316, 0, ancHubY, 0);
+  // Intermediate stabilizing cross-brace
+  add(internalGrp, box(R * 1.76, 0.09, 0.12), M.ss316, 0, -H * 0.08, 0);
+
+  // Two Vertical Wall Sweep Arms (clearance R - 0.13m)
+  const armR = R - 0.13;
+  const armH = H * 0.68;
+  add(internalGrp, box(0.12, armH, 0.15), M.ss316, -armR, -H * 0.08, 0);
+  add(internalGrp, box(0.12, armH, 0.15), M.ss316,  armR, -H * 0.08, 0);
+
+  // Bottom Contoured Anchor Sweep (following ellipsoidal bottom head curve)
+  add(internalGrp, box(0.45, 0.12, 0.15), M.ss316, -armR * 0.72, ancHubY - 0.16, 0, 0, 0, Math.PI / 6);
+  add(internalGrp, box(0.45, 0.12, 0.15), M.ss316,  armR * 0.72, ancHubY - 0.16, 0, 0, 0, -Math.PI / 6);
+
+  // 6 Replaceable PTFE Wall Wiper Blocks (simulating scrapers on arm edges)
+  for(const wy of [-H * 0.35, -H * 0.08, H * 0.16]){{
+    // Left scrapers
+    add(internalGrp, box(0.12, 0.24, 0.10), M.copper, -(armR + 0.05), wy, 0);
+    // Right scrapers
+    add(internalGrp, box(0.12, 0.24, 0.10), M.copper,  (armR + 0.05), wy, 0);
   }}
 
   g.add(internalGrp);
 
-  // ── 3-tier thermowell array (blue instrument heads on vessel wall) ──
-  for(const tw of[-H*0.3+shY-shY, 0, H*0.26]){{
-    nozzle(g,0.075,0.38, -(R+0.14),shY+tw,0,'-x');
-    // RTD head
-    add(g,box(0.14,0.18,0.14),M.blue, -(R+0.52),shY+tw,0);
-  }}
+  // Smooth rotation animation for agitator assembly
+  animFns.push(()=>{{ internalGrp.rotation.y += 0.032; }});
 
-  // ── Safety relief valve + rupture disc ──
-  const srvGrp=new THREE.Group(); srvGrp.position.set(-R*0.4,topY+0.07+R*0.5+0.1,-R*0.4);
-  add(srvGrp,cyl(0.11,0.60,12),M.red,0,0.3,0);
-  add(srvGrp,cone(0.11,0.4,12),M.cs,0,0.6+0.2,0);
-  g.add(srvGrp);
-
-  // ── Feed inlet nozzle (top side) ──
-  nozzle(g,0.14,0.55, 0,topY+0.07+R*0.5-0.2,R*0.6,'y');
-  // ── Bottom blowdown valve ──
-  add(g,box(0.38,0.44,0.38),M.red, 0,padH+skirtH*0.35,0);
-
-  animFns.push(()=>{{internalGrp.rotation.y+=0.032;}});
-
-  plantGrp.add(g); eqObjs['R-101']=g;
+  plantGrp.add(g);
+  eqObjs['R-101'] = g;
   return g;
 }}
 
