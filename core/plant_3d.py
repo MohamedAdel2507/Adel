@@ -372,10 +372,10 @@ body{{background:#0a0d14;overflow:hidden;font-family:-apple-system,BlinkMacSyste
 <div id="hud"><b>🏭 HYACINTH-X Industrial Digital Twin</b>
 <span id="hudtxt">{selected_eq_id} · {eq_name} · {mode_label}</span></div>
 <div id="btns">
-  <button class="cb" onclick="camPreset('iso')">📐 Isometric</button>
-  <button class="cb" onclick="camPreset('front')">👁 Front</button>
-  <button class="cb" onclick="camPreset('top')">⬆ Plan</button>
-  <button class="cb" onclick="camPreset('sel')">🔍 Focus {selected_eq_id}</button>
+  <button id="btn-iso" class="cb" onclick="window.camPreset && window.camPreset('iso')">📐 Isometric</button>
+  <button id="btn-front" class="cb" onclick="window.camPreset && window.camPreset('front')">👁 Front</button>
+  <button id="btn-top" class="cb" onclick="window.camPreset && window.camPreset('top')">⬆ Plan</button>
+  <button id="btn-sel" class="cb" onclick="window.camPreset && window.camPreset('sel')">🔍 Focus {selected_eq_id}</button>
 </div>
 <div id="leg">
   <span><span class="dot" style="background:#38a169"></span>Biomass/Slurry</span>
@@ -1528,24 +1528,69 @@ function getEqSize(id){{
 }}
 
 function camPreset(mode){{
-  if(mode==='iso'){{
-    camera.position.set(25,30,42);
-    controls.target.set(-5,4,9);
-  }}else if(mode==='front'){{
-    camera.position.set(-5,15,55);
-    controls.target.set(-5,6,9);
-  }}else if(mode==='top'){{
-    camera.position.set(-5,70,9.1);
-    controls.target.set(-5,0,9);
-  }}else if(mode==='sel'){{
-    const ctr=getEqCentre(selId);
-    const sz=getEqSize(selId);
-    const dist=Math.max(sz.x,sz.y,sz.z)*1.6+5;
-    camera.position.set(ctr.x+dist*0.65, ctr.y+dist*0.4, ctr.z+dist*0.85);
-    controls.target.set(ctr.x, ctr.y, ctr.z);
+  camera.up.set(0, 1, 0);
+  if(mode === 'iso'){{
+    if(isSingle && eqObjs[selId]){{
+      const bb = new THREE.Box3().setFromObject(eqObjs[selId]);
+      const ctr = bb.getCenter(new THREE.Vector3());
+      const sz = bb.getSize(new THREE.Vector3());
+      const dist = Math.max(sz.x, sz.y, sz.z) * 1.55 + 5;
+      camera.position.set(ctr.x + dist * 0.65, ctr.y + dist * 0.42, ctr.z + dist * 0.9);
+      controls.target.set(ctr.x, ctr.y, ctr.z);
+    }} else {{
+      camera.position.set(28, 32, 45);
+      controls.target.set(-5, 4, 9);
+    }}
+  }}else if(mode === 'front'){{
+    if(isSingle && eqObjs[selId]){{
+      const bb = new THREE.Box3().setFromObject(eqObjs[selId]);
+      const ctr = bb.getCenter(new THREE.Vector3());
+      const sz = bb.getSize(new THREE.Vector3());
+      const dist = Math.max(sz.x, sz.y, sz.z) * 1.6 + 5;
+      camera.position.set(ctr.x, ctr.y + sz.y * 0.1, ctr.z + dist);
+      controls.target.set(ctr.x, ctr.y, ctr.z);
+    }} else {{
+      camera.position.set(-5, 14, 55);
+      controls.target.set(-5, 5, 9);
+    }}
+  }}else if(mode === 'top' || mode === 'plan'){{
+    if(isSingle && eqObjs[selId]){{
+      const bb = new THREE.Box3().setFromObject(eqObjs[selId]);
+      const ctr = bb.getCenter(new THREE.Vector3());
+      const sz = bb.getSize(new THREE.Vector3());
+      const dist = Math.max(sz.x, sz.z) * 1.8 + 6;
+      camera.position.set(ctr.x, ctr.y + dist, ctr.z + 0.01);
+      controls.target.set(ctr.x, ctr.y, ctr.z);
+    }} else {{
+      camera.position.set(-5, 75, 9.01);
+      controls.target.set(-5, 0, 9);
+    }}
+  }}else if(mode === 'sel' || mode === 'focus'){{
+    const targetObj = eqObjs[selId];
+    if(targetObj){{
+      const bb = new THREE.Box3().setFromObject(targetObj);
+      const ctr = bb.getCenter(new THREE.Vector3());
+      const sz = bb.getSize(new THREE.Vector3());
+      const dist = Math.max(sz.x, sz.y, sz.z) * 1.55 + 5;
+      camera.position.set(ctr.x + dist * 0.65, ctr.y + dist * 0.42, ctr.z + dist * 0.9);
+      controls.target.set(ctr.x, ctr.y, ctr.z);
+    }} else {{
+      camera.position.set(28, 32, 45);
+      controls.target.set(-5, 4, 9);
+    }}
   }}
   controls.update();
 }}
+window.camPreset = camPreset;
+
+const bIso = document.getElementById('btn-iso');
+if(bIso) bIso.addEventListener('click', function(e){{ e.preventDefault(); camPreset('iso'); }});
+const bFront = document.getElementById('btn-front');
+if(bFront) bFront.addEventListener('click', function(e){{ e.preventDefault(); camPreset('front'); }});
+const bTop = document.getElementById('btn-top');
+if(bTop) bTop.addEventListener('click', function(e){{ e.preventDefault(); camPreset('top'); }});
+const bSel = document.getElementById('btn-sel');
+if(bSel) bSel.addEventListener('click', function(e){{ e.preventDefault(); camPreset('sel'); }});
 
 // Initial camera
 if(isSingle){{
