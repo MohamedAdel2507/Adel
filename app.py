@@ -70,6 +70,7 @@ from core.data_manager import MODULE_NAMES, MODULES
 from core.process_controller import run_simulation
 from core.validation import validate_inputs
 from core import ui_components as ui
+from core import math_documentation as md
 from modules import module_01_feedstock as m01
 from modules import module_02_process_yield as m02
 from modules import module_03_energy_utilities as m03
@@ -124,13 +125,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------- Main Navigation Tabs -----------------
-tab_home, tab_setup, tab_run, tab_dash, tab_reports, tab_assump = st.tabs([
+tab_home, tab_setup, tab_run, tab_dash, tab_reports, tab_assump, tab_math = st.tabs([
     "🏠 Overview & Flowsheet",
     "⚙️ Process Setup & Parameters",
     "▶️ Execution Console",
     "📊 Engineering Analytics",
     "📄 Technical Reports & Exports",
-    "🔍 Quality & Ledger Audits"
+    "🔍 Quality & Ledger Audits",
+    "📐 Mathematical Model & Engineering Fundamentals"
 ])
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -613,3 +615,9 @@ with tab_assump:
         - **Module 04:** Allocations represent scenario routing fractions; water treatment reflects volume splits rather than COD/BOD biological kinetics.
         - **Module 05:** Annual capital charge uses discounted capital recovery factor ($\text{CRF}$). Prices must be explicitly provided by the user.
         """)
+
+# ══════════════════════════════════════════════════════════════════════════
+# TAB 7: MATHEMATICAL MODEL & ENGINEERING FUNDAMENTALS
+# ══════════════════════════════════════════════════════════════════════════
+with tab_math:
+    md.render_math_docs(dm)
