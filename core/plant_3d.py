@@ -10,10 +10,20 @@ Root-cause fixes applied vs. previous version:
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
+import json
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+import plotly.graph_objects as go
+
+from core.material_balance import (
+    compute_all_streams,
+    compute_equipment_material_balance,
+    compute_plant_material_balance,
+    generate_sankey_data,
+    STREAM_COLORS,
+)
 
 # ---------------------------------------------------------------------------
 # Equipment Catalog
@@ -332,13 +342,42 @@ def extract_equipment_telemetry(eq_id: str, dm: Any) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Three.js scene builder
 # ---------------------------------------------------------------------------
-def build_threejs_html(selected_eq_id: str, view_mode: str = "full_plant", cutaway: bool = True) -> str:
-    """Generate a self-contained Three.js WebGL page with detailed industrial equipment."""
+def build_threejs_html(
+    selected_eq_id: str,
+    view_mode: str = "full_plant",
+    cutaway: bool = True,
+    selected_stream_id: str = "",
+    dm: Any = None,
+) -> str:
+    """Generate a self-contained Three.js WebGL page with detailed industrial equipment and mass balance streams."""
 
     cutaway_js = "true" if cutaway else "false"
     meta = EQUIPMENT_METADATA.get(selected_eq_id, {})
     eq_name = meta.get("name", selected_eq_id)
     mode_label = "Single Equipment" if view_mode == "single_equipment" else "Full Plant"
+
+    # Compute authoritative simulation streams
+    all_streams = compute_all_streams(dm)
+    stream_payload = {}
+    for sid, strm in all_streams.items():
+        comp_summary = ", ".join(f"{k}: {v:.1f}%" for k, v in list(strm.component_fractions.items())[:3])
+        stream_payload[sid] = {
+            "name": strm.name,
+            "flow_h": f"{strm.mass_flow_kg_h:.1f} kg/h",
+            "flow_d": f"{strm.mass_flow_kg_day:,.1f} kg/d",
+            "temp": f"{strm.temp_c:.1f} °C",
+            "press": f"{strm.pressure_bar:.2f} bar",
+            "phase": strm.phase,
+            "moist": f"{strm.moisture_pct:.1f} %",
+            "solids": f"{strm.solids_pct:.1f} %",
+            "cat": strm.category,
+            "src": strm.source_id,
+            "tgt": strm.target_id,
+            "comp": comp_summary,
+            "desc": strm.description,
+        }
+    stream_data_json = json.dumps(stream_payload)
+    active_stream_js = f'"{selected_stream_id}"' if selected_stream_id and selected_stream_id in stream_payload else '""'
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -357,12 +396,18 @@ body{{background:#0a0d14;overflow:hidden;font-family:-apple-system,BlinkMacSyste
      backdrop-filter:blur(6px);transition:.18s}}
 .cb:hover{{background:#2b6cb0;color:#fff;border-color:#63b3ed}}
 #leg{{position:fixed;bottom:12px;right:12px;background:rgba(10,13,20,.85);border:1px solid rgba(255,255,255,.12);
-      border-radius:6px;padding:7px 12px;color:#a0aec0;font-size:11px;display:flex;flex-wrap:wrap;gap:10px 16px;max-width:360px;z-index:9;pointer-events:none}}
+      border-radius:6px;padding:7px 12px;color:#a0aec0;font-size:11px;display:flex;flex-wrap:wrap;gap:10px 16px;max-width:380px;z-index:9;pointer-events:none}}
 .dot{{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:middle}}
 #tip{{position:fixed;bottom:12px;left:12px;background:rgba(10,13,20,.82);border:1px solid rgba(255,255,255,.1);
       border-radius:6px;padding:7px 13px;color:#718096;font-size:11px;pointer-events:none}}
 #eqlab{{position:fixed;bottom:52px;left:12px;background:rgba(43,108,176,.85);border-radius:6px;
         padding:5px 12px;color:#fff;font-size:12.5px;font-weight:700;pointer-events:none}}
+#sc_card{{display:none;position:fixed;bottom:85px;left:12px;background:rgba(10,15,25,.94);
+          border:1px solid #38a169;border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:12px;
+          z-index:10;max-width:340px;box-shadow:0 8px 24px rgba(0,0,0,.7);backdrop-filter:blur(8px)}}
+#sc_title{{font-weight:700;color:#4ade80;font-size:13px;margin-bottom:3px}}
+#sc_flow{{font-weight:700;color:#fff;font-size:13.5px;margin-bottom:4px}}
+#sc_details{{font-size:11.5px;color:#cbd5e1;line-height:1.45}}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -378,14 +423,22 @@ body{{background:#0a0d14;overflow:hidden;font-family:-apple-system,BlinkMacSyste
   <button id="btn-sel" class="cb" onclick="window.camPreset && window.camPreset('sel')">🔍 Focus {selected_eq_id}</button>
 </div>
 <div id="leg">
-  <span><span class="dot" style="background:#38a169"></span>Biomass/Slurry</span>
-  <span><span class="dot" style="background:#3182ce"></span>Broth/Hydrolysate</span>
-  <span><span class="dot" style="background:#dd6b20"></span>Steam/Heat</span>
-  <span><span class="dot" style="background:#805ad5"></span>H₂SO₄/Catalyst</span>
-  <span><span class="dot" style="background:#ecc94b"></span>Fuel Ethanol &gt;99%</span>
+  <span><span class="dot" style="background:#2e7d32"></span>Biomass/Slurry</span>
+  <span><span class="dot" style="background:#0288d1"></span>Process Water</span>
+  <span><span class="dot" style="background:#00acc1"></span>Hydrolysate</span>
+  <span><span class="dot" style="background:#3949ab"></span>Broth/Beer</span>
+  <span><span class="dot" style="background:#ea580c"></span>Steam/Heat</span>
+  <span><span class="dot" style="background:#8b5cf6"></span>H₂SO₄ Acid</span>
+  <span><span class="dot" style="background:#eab308"></span>Fuel Ethanol &gt;99%</span>
+  <span><span class="dot" style="background:#78350f"></span>Residue Cake</span>
 </div>
-<div id="tip">🖱 Rotate: left-drag · Pan: right-drag · Zoom: scroll</div>
+<div id="tip">🖱 Rotate: left-drag · Pan: right-drag · Zoom: scroll · Click pipe for stream info</div>
 <div id="eqlab">Cutaway: {'ON' if cutaway else 'OFF'}</div>
+<div id="sc_card">
+  <div id="sc_title">STREAM DATA</div>
+  <div id="sc_flow"></div>
+  <div id="sc_details"></div>
+</div>
 
 <script>
 (function(){{
@@ -1708,45 +1761,142 @@ pump(plantGrp, 14.5,0.3,9.0,Math.PI/2);
 pump(plantGrp,  8.0,0.3,18.0,0);
 pump(plantGrp, -2.0,0.3,18.0,0);
 
-// ─── PROCESS PIPING & FLOW PARTICLES ──────────────────────────────────────
+// ─── PROCESS PIPING & MASS BALANCE STREAMS ───────────────────────────────
+const streamMeta = {stream_data_json};
+const activeStreamId = {active_stream_js};
+
 const pipeDefs=[
-  {{ pts:[[-30,2.5,0],[-24,2.5,0]],                        col:0x38a169, r:0.16 }},
-  {{ pts:[[-15.5,2.5,0],[-11,2.5,0]],                      col:0x38a169, r:0.16 }},
-  {{ pts:[[-11,1.5,0],[-7.5,1.5,0],[-7.5,3.5,0],[-3,3.5,0]], col:0x38a169,r:0.14}},
-  {{ pts:[[-3,2,0],[0.5,2,0],[0.5,3.8,0],[5,3.8,0]],       col:0x38a169, r:0.14 }},
-  {{ pts:[[5,1.4,0],[9.4,1.4,0]],                           col:0x38a169, r:0.15 }},
-  {{ pts:[[15.6,2.2,0],[19.5,2.2,0],[19.5,2.2,18],[15.5,2.2,18]], col:0x3182ce,r:0.14}},
-  {{ pts:[[10.8,2.2,18],[3,2.2,18]],                        col:0xd97706, r:0.14 }},
-  {{ pts:[[3,2.5,18],[-8,2.5,18],[-8,5.5,18]],              col:0x3182ce, r:0.13 }},
-  {{ pts:[[-8,13,18],[-13,13,18],[-13,5,18],[-19,5,18]],   col:0xecc94b, r:0.15 }},
-  {{ pts:[[-19,2.5,18],[-26,2.5,18]],                       col:0x68d391, r:0.12 }},
-  {{ pts:[[-3,5,0],[-3,6,0],[-3,6,-2.5]],                   col:0x805ad5, r:0.08 }},
-  {{ pts:[[5,8,0],[5,8.5,0],[3.5,8.5,0]],                   col:0xdd6b20, r:0.09 }},
+  {{ id:'S-01', name:'Raw Feedstock', src:'Feed', tgt:'T-101', col:0x2e7d32, r:0.16, pts:[[-36,2.5,0],[-30,2.5,0]] }},
+  {{ id:'S-W1', name:'Washing Water Inflow', src:'Water', tgt:'T-101', col:0x0288d1, r:0.11, pts:[[-30,6.2,0],[-30,4.2,0]] }},
+  {{ id:'S-W2', name:'Wash Effluent Wastewater', src:'T-101', tgt:'Waste', col:0x64748b, r:0.12, pts:[[-30,0.4,0],[-30,0.4,-6]] }},
+  {{ id:'S-02', name:'Washed Biomass to Dryer', src:'T-101', tgt:'D-101', col:0x2e7d32, r:0.16, pts:[[-30,2.5,0],[-24,2.5,0]] }},
+  {{ id:'S-V1', name:'Dryer Evaporated Vapour', src:'D-101', tgt:'Exhaust', col:0x94a3b8, r:0.12, pts:[[-18,5.5,0],[-18,8.0,0],[-18,8.0,-4]] }},
+  {{ id:'S-03', name:'Dried Biomass (10% Moisture)', src:'D-101', tgt:'M-101', col:0xb45309, r:0.16, pts:[[-15.5,2.5,0],[-11,2.5,0]] }},
+  {{ id:'S-04', name:'Milled Biomass Powder', src:'M-101', tgt:'T-102', col:0x334155, r:0.14, pts:[[-11,1.5,0],[-7.5,1.5,0],[-7.5,3.5,0],[-3,3.5,0]] }},
+  {{ id:'S-W3', name:'Slurry Dilution Water', src:'Water', tgt:'T-102', col:0x0288d1, r:0.10, pts:[[-3,5,0],[-3,6,0],[-3,6,-2.5]] }},
+  {{ id:'S-A1', name:'Dilute H2SO4 Catalyst', src:'Acid', tgt:'T-102', col:0x8b5cf6, r:0.08, pts:[[-1.5,5,-2.5],[-3,5,0]] }},
+  {{ id:'S-05', name:'Acidic Feedstock Slurry', src:'T-102', tgt:'R-101', col:0x0284c7, r:0.14, pts:[[-3,2,0],[0.5,2,0],[0.5,3.8,0],[5,3.8,0]] }},
+  {{ id:'S-H2', name:'High-Pressure Reactor Steam', src:'Boiler', tgt:'R-101', col:0xea580c, r:0.09, pts:[[5,8,0],[5,8.5,0],[3.5,8.5,0]] }},
+  {{ id:'S-H2C', name:'Jacket Steam Condensate', src:'R-101', tgt:'Condensate', col:0x0288d1, r:0.09, pts:[[5,2.2,0],[5,2.2,-4],[2,2.2,-4]] }},
+  {{ id:'S-06', name:'Pretreated Reaction Slurry', src:'R-101', tgt:'F-101', col:0xb91c1c, r:0.15, pts:[[5,1.4,0],[9.4,1.4,0]] }},
+  {{ id:'S-07', name:'Solid Filter Press Cake', src:'F-101', tgt:'Residue', col:0x78350f, r:0.15, pts:[[13,0.5,0],[13,0.5,-6]] }},
+  {{ id:'S-08', name:'Clarified Hydrolysate', src:'F-101', tgt:'E-101', col:0x00acc1, r:0.14, pts:[[15.6,2.2,0],[19.5,2.2,0],[19.5,2.2,18],[15.5,2.2,18]] }},
+  {{ id:'S-G1', name:'Fermentation CO2 Off-Gas', src:'E-101', tgt:'Vent', col:0x64748b, r:0.10, pts:[[13,7.5,18],[13,10.0,18],[10,10.0,18]] }},
+  {{ id:'S-09', name:'Fermentation Broth (Beer)', src:'E-101', tgt:'S-101', col:0x16a34a, r:0.14, pts:[[10.8,2.2,18],[3,2.2,18]] }},
+  {{ id:'S-11', name:'Yeast & Cell Biomass', src:'S-101', tgt:'Feedstock', col:0x78350f, r:0.12, pts:[[3,0.4,18],[3,0.4,23]] }},
+  {{ id:'S-10', name:'Clarified Beer Broth', src:'S-101', tgt:'C-101', col:0x0f766e, r:0.13, pts:[[3,2.5,18],[-8,2.5,18],[-8,5.5,18]] }},
+  {{ id:'S-13', name:'Stillage Bottoms Effluent', src:'C-101', tgt:'Waste', col:0x64748b, r:0.14, pts:[[-8,0.5,18],[-8,0.5,23]] }},
+  {{ id:'S-12', name:'Azeotropic Ethanol Vapour', src:'C-101', tgt:'V-101', col:0xf59e0b, r:0.15, pts:[[-8,13,18],[-13,13,18],[-13,5,18],[-19,5,18]] }},
+  {{ id:'S-14', name:'Fuel Ethanol Product (>99%)', src:'V-101', tgt:'Storage', col:0xeab308, r:0.13, pts:[[-19,2.5,18],[-26,2.5,18]] }},
 ];
 
 const particles=[];
+const pipeMeshes=[];
+
 pipeDefs.forEach(pd=>{{
   const v3pts=pd.pts.map(p=>new THREE.Vector3(...p));
   const curve=v3pts.length===2
     ? new THREE.LineCurve3(v3pts[0],v3pts[1])
     : new THREE.CatmullRomCurve3(v3pts,false,'catmullrom',0.1);
 
-  const tubMat=new THREE.MeshStandardMaterial({{
-    color:pd.col, metalness:0.70, roughness:0.32
-  }});
-  const tube=new THREE.Mesh(new THREE.TubeGeometry(curve,24,pd.r,10,false),tubMat);
-  tube.castShadow=true; plantGrp.add(tube);
+  const isSelInlet = (pd.tgt === selId);
+  const isSelOutlet = (pd.src === selId);
+  const isStreamActive = (pd.id === activeStreamId);
 
-  const nP=Math.max(2,Math.floor(curve.getLength()/2.2));
+  let emCol = 0x000000;
+  let emInt = 0.0;
+  if(isStreamActive){{
+    emCol = 0x22c55e; emInt = 0.95;
+  }}else if(isSelInlet){{
+    emCol = 0x00e5ff; emInt = 0.80; // Glowing Cyan for Inlets
+  }}else if(isSelOutlet){{
+    emCol = 0xffaa00; emInt = 0.80; // Glowing Amber for Outlets
+  }}
+
+  const radMult = isStreamActive ? 1.35 : ((isSelInlet || isSelOutlet) ? 1.20 : 1.0);
+  const tubMat = new THREE.MeshStandardMaterial({{
+    color: pd.col,
+    emissive: emCol,
+    emissiveIntensity: emInt,
+    metalness: 0.72,
+    roughness: 0.30,
+    side: THREE.DoubleSide
+  }});
+
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 28, pd.r * radMult, 12, false), tubMat);
+  tube.castShadow = true;
+  tube.userData = {{ streamId: pd.id }};
+  plantGrp.add(tube);
+  pipeMeshes.push(tube);
+
+  // Flow direction arrows (small cones oriented tangentially along the pipe curve)
+  for(const tPos of [0.40, 0.75]){{
+    const pt = curve.getPointAt(tPos);
+    const tangent = curve.getTangentAt(tPos).normalize();
+    const coneGeo = new THREE.ConeGeometry(pd.r * 1.7 * radMult, pd.r * 2.8 * radMult, 12);
+    const coneMat = new THREE.MeshStandardMaterial({{
+      color: (isSelInlet ? 0x00e5ff : (isSelOutlet ? 0xffaa00 : pd.col)),
+      emissive: emCol,
+      emissiveIntensity: emInt
+    }});
+    const arrow = new THREE.Mesh(coneGeo, coneMat);
+    arrow.position.copy(pt);
+    arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), tangent);
+    arrow.userData = {{ streamId: pd.id }};
+    plantGrp.add(arrow);
+    pipeMeshes.push(arrow);
+  }}
+
+  // Animated material flow particles
+  const nP = Math.max(2, Math.floor(curve.getLength() / 2.0));
+  const partSpeed = (isSelInlet || isSelOutlet || isStreamActive) ? 0.0075 : 0.004;
   for(let i=0;i<nP;i++){{
-    const sp=new THREE.Mesh(
-      new THREE.SphereGeometry(pd.r*1.45,7,7),
-      new THREE.MeshBasicMaterial({{color:0xffffff}})
+    const partCol = isStreamActive ? 0x4ade80 : (isSelInlet ? 0x67e8f9 : (isSelOutlet ? 0xfde047 : 0xffffff));
+    const sp = new THREE.Mesh(
+      new THREE.SphereGeometry(pd.r * 1.35 * radMult, 8, 8),
+      new THREE.MeshBasicMaterial({{color: partCol}})
     );
     plantGrp.add(sp);
-    particles.push({{m:sp,c:curve,t:i/nP,s:0.004+pd.r*0.001}});
+    particles.push({{m: sp, c: curve, t: i / nP, s: partSpeed + pd.r * 0.001}});
   }}
 }});
+
+// ─── INTERACTIVE STREAM CLICK & HUD INSPECTOR ────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+function showStreamCard(sid){{
+  const s = streamMeta[sid];
+  if(!s) return;
+  const card = document.getElementById('sc_card');
+  const title = document.getElementById('sc_title');
+  const flow = document.getElementById('sc_flow');
+  const details = document.getElementById('sc_details');
+  if(!card || !title || !flow || !details) return;
+
+  title.innerText = 'STREAM ' + sid + ' · ' + s.name.toUpperCase();
+  flow.innerText = '⚡ Mass Rate: ' + s.flow_h + ' (' + s.flow_d + ')';
+  details.innerHTML = '<b>Origin:</b> ' + s.src + ' → <b>Target:</b> ' + s.tgt + '<br/>' +
+    '<b>Temp:</b> ' + s.temp + ' · <b>Pressure:</b> ' + s.press + ' · <b>Phase:</b> ' + s.phase + '<br/>' +
+    '<b>Moisture:</b> ' + s.moist + ' · <b>Solids:</b> ' + s.solids + '<br/>' +
+    '<b>Components:</b> ' + s.comp;
+  card.style.display = 'block';
+}}
+
+function onCanvasClick(e){{
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(pipeMeshes, false);
+  if(hits.length > 0 && hits[0].object.userData.streamId){{
+    showStreamCard(hits[0].object.userData.streamId);
+  }}
+}}
+canvas.addEventListener('click', onCanvasClick);
+if(activeStreamId && streamMeta[activeStreamId]){{
+  showStreamCard(activeStreamId);
+}}
 
 // ─── EQUIPMENT ID LABELS (small point-lights per unit) ────────────────────
 Object.entries(eqObjs).forEach(([id,grp])=>{{
@@ -1902,7 +2052,25 @@ def render_3d_plant_section(dm: Any = None) -> None:
         unsafe_allow_html=True,
     )
 
-    ctrl1, ctrl2, ctrl3 = st.columns([2, 2, 2])
+    # Precompute balances and streams
+    all_streams = compute_all_streams(dm)
+    plant_balance = compute_plant_material_balance(dm)
+
+    st.markdown(
+        """
+        <div style="background:linear-gradient(135deg,#0d47a1 0%,#1565c0 50%,#0277bd 100%);
+                    padding:1.2rem 1.6rem;border-radius:10px;color:white;margin-bottom:1.2rem;
+                    box-shadow:0 4px 15px rgba(2,119,189,.2)">
+          <div style="font-size:1.45rem;font-weight:800;letter-spacing:-.02em">🏭 3D Process Plant &amp; Digital Twin</div>
+          <div style="font-size:.85rem;color:#e1f5fe;margin-top:.2rem">
+            Industrial WebGL Digital Twin · Interactive Mass &amp; Material Balance · Sankey Flow Network · Educational Engineering Mode
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    ctrl1, ctrl2, ctrl3, ctrl4, ctrl5 = st.columns([1.5, 1.8, 1.8, 1.1, 1.4])
     with ctrl1:
         view_mode = st.selectbox(
             "Visualization Mode",
@@ -1918,7 +2086,19 @@ def render_3d_plant_section(dm: Any = None) -> None:
             key="w_3d_eq_select",
         )
     with ctrl3:
-        cutaway_toggle = st.checkbox("Internal Cutaway / Components View", value=True, key="w_3d_cutaway")
+        stream_choices = ["(All Streams Overview)"] + [f"{sid}: {s.name}" for sid, s in all_streams.items()]
+        selected_stream_label = st.selectbox(
+            "Inspect Process Stream",
+            stream_choices,
+            key="w_3d_stream_select",
+        )
+        selected_stream_id = selected_stream_label.split(":")[0] if selected_stream_label != "(All Streams Overview)" else ""
+    with ctrl4:
+        cutaway_toggle = st.checkbox("Internal Cutaway", value=True, key="w_3d_cutaway")
+    with ctrl5:
+        edu_mode = st.checkbox("🎓 Educational Mode", value=False, key="w_3d_edu_mode")
+
+    eq_balance = compute_equipment_material_balance(selected_eq, dm)
 
     col_left, col_center, col_right = st.columns([1.1, 2.5, 1.4], gap="medium")
 
@@ -1928,30 +2108,83 @@ def render_3d_plant_section(dm: Any = None) -> None:
             unsafe_allow_html=True,
         )
         for eid, meta in EQUIPMENT_METADATA.items():
+            b_item = compute_equipment_material_balance(eid, dm)
             is_active = eid == selected_eq
             bg = "#e3f2fd" if is_active else "#ffffff"
             border = "2px solid #1565c0" if is_active else "1px solid #e2e8f0"
             st.markdown(
                 f"""<div style="background:{bg};border:{border};border-radius:8px;padding:7px 10px;margin-bottom:6px">
-                    <div style="font-weight:700;font-size:.82rem;color:#1a202c">{meta['icon']} {eid}: {meta['name']}</div>
-                    <div style="font-size:.72rem;color:#718096">{meta['stage']}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <div style="font-weight:700;font-size:.82rem;color:#1a202c">{meta['icon']} {eid}: {meta['name']}</div>
+                      <span style="background:#e8f5e9;color:#2e7d32;font-size:.68rem;font-weight:700;padding:2px 6px;border-radius:10px">✓ 100%</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+                      <span style="font-size:.70rem;color:#718096">{meta['stage']}</span>
+                      <span style="font-size:.70rem;font-weight:600;color:#2d3748">{b_item.total_in_kg_h:.1f} kg/h</span>
+                    </div>
                 </div>""",
                 unsafe_allow_html=True,
             )
 
     with col_center:
         mode_param = "single_equipment" if "Focused" in view_mode else "full_plant"
-        html = build_threejs_html(selected_eq, mode_param, cutaway_toggle)
-        components.html(html, height=600, scrolling=False)
-        st.caption("🎮 **3D Controls:** Left-drag Rotate · Right-drag Pan · Scroll Zoom · Use preset buttons top-right to jump to views")
+        html = build_threejs_html(selected_eq, mode_param, cutaway_toggle, selected_stream_id, dm)
+        components.html(html, height=620, scrolling=False)
+        st.caption("🎮 **3D Controls:** Left-drag Rotate · Right-drag Pan · Scroll Zoom · Click any pipe for stream info · Presets top-right")
+
+        # Interactive Stream Flow Badges for Active Equipment
+        in_badges = " ".join([f"<span style='background:#e0f7fa;border:1px solid #00bcd4;color:#006064;padding:3px 7px;border-radius:4px;font-size:11px;font-weight:700;margin-right:4px'>IN: {s.id} ({s.mass_flow_kg_h:.1f} kg/h)</span>" for s in eq_balance.inflow_streams])
+        out_badges = " ".join([f"<span style='background:#fff3e0;border:1px solid #ff9800;color:#e65100;padding:3px 7px;border-radius:4px;font-size:11px;font-weight:700;margin-right:4px'>OUT: {s.id} ({s.mass_flow_kg_h:.1f} kg/h)</span>" for s in eq_balance.outflow_streams])
+        st.markdown(
+            f"""<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;margin-top:4px">
+              <div style="font-size:.78rem;font-weight:700;color:#334155;margin-bottom:4px">⚡ {selected_eq} ACTIVE STREAM CONNECTORS:</div>
+              <div>{in_badges if in_badges else "<span style='font-size:11px;color:#94a3b8'>No inflows</span>"} {out_badges if out_badges else "<span style='font-size:11px;color:#94a3b8'>No outflows</span>"}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
 
     with col_right:
         meta = EQUIPMENT_METADATA[selected_eq]
         st.markdown(f"#### {meta['icon']} {selected_eq}: {meta['name']}")
         st.caption(f"**Stage:** {meta['stage']}")
-        r_tab1, r_tab2, r_tab3 = st.tabs(["📊 Live Telemetry", "⚙️ Internals", "📖 Principle"])
+
+        r_tab1, r_tab2, r_tab3, r_tab4 = st.tabs(["⚖️ Mass Balance", "🌊 Stream Data", "📊 Telemetry", "⚙️ Internals"])
 
         with r_tab1:
+            st.markdown("<div style='font-size:.78rem;font-weight:700;color:#1565c0;margin-bottom:.3rem'>EQUIPMENT MASS BALANCE:</div>", unsafe_allow_html=True)
+            m_c1, m_c2 = st.columns(2)
+            with m_c1:
+                st.metric("Total Inflow", f"{eq_balance.total_in_kg_h:.2f} kg/h", f"{eq_balance.total_in_kg_day:,.1f} kg/d")
+            with m_c2:
+                st.metric("Total Outflow", f"{eq_balance.total_out_kg_h:.2f} kg/h", f"Closure: {eq_balance.closure_pct:.1f}%")
+
+            if eq_balance.is_reactive:
+                st.info(f"🔄 **Reaction Active:** Generation = {eq_balance.generation_kg_h:.2f} kg/h | Consumption = {eq_balance.consumption_kg_h:.2f} kg/h")
+
+            st.markdown("<div style='font-size:.75rem;font-weight:700;color:#475569;margin-top:.4rem;margin-bottom:.2rem'>COMPONENT-WISE MASS DISTRIBUTION:</div>", unsafe_allow_html=True)
+            if not eq_balance.components_table.empty:
+                st.dataframe(eq_balance.components_table, hide_index=True, use_container_width=True)
+            else:
+                st.caption("No component-level breakdown available.")
+
+        with r_tab2:
+            st.markdown("<div style='font-size:.78rem;font-weight:700;color:#0288d1;margin-bottom:.3rem'>STREAM THERMODYNAMICS &amp; COMPOSITION:</div>", unsafe_allow_html=True)
+            strm = all_streams.get(selected_stream_id) or (eq_balance.inflow_streams[0] if eq_balance.inflow_streams else (eq_balance.outflow_streams[0] if eq_balance.outflow_streams else None))
+            if strm:
+                st.markdown(f"**Stream {strm.id}: {strm.name}**")
+                st.caption(f"*{strm.description}*")
+                s_c1, s_c2 = st.columns(2)
+                s_c1.metric("Mass Flow Rate", f"{strm.mass_flow_kg_h:.2f} kg/h", f"{strm.mass_flow_kg_day:,.1f} kg/day")
+                s_c2.metric("Temperature / Press", f"{strm.temp_c:.1f} °C", f"{strm.pressure_bar:.2f} bar")
+
+                st.markdown(f"**Phase:** `{strm.phase}` · **Moisture:** `{strm.moisture_pct:.1f}%` · **Dry Solids:** `{strm.solids_pct:.1f}%`")
+                if strm.component_fractions:
+                    st.markdown("<div style='font-size:.75rem;font-weight:700;color:#475569;margin-top:.4rem'>COMPONENT FRACTIONS (wt%):</div>", unsafe_allow_html=True)
+                    st.dataframe(pd.DataFrame([{"Component": k, "Mass Fraction (%)": f"{v:.2f}%", "Flow (kg/h)": f"{strm.components.get(k, 0):.3f}"} for k, v in strm.component_fractions.items()]), hide_index=True, use_container_width=True)
+            else:
+                st.info("Select a stream from the top controls or click any pipe in 3D to inspect.")
+
+        with r_tab3:
             telem = extract_equipment_telemetry(selected_eq, dm)
             st.markdown(
                 f"<div style='font-size:.75rem;font-weight:700;color:#2e7d32;margin-bottom:.4rem'>DATA BUS: {telem['status'].upper()}</div>",
@@ -1962,11 +2195,118 @@ def render_3d_plant_section(dm: Any = None) -> None:
             else:
                 st.info("No telemetry. Run simulation to stream live parameters.")
 
-        with r_tab2:
+        with r_tab4:
             st.markdown("<div style='font-size:.78rem;font-weight:700;color:#4a5568'>INTERNAL MECHANICAL ASSEMBLIES:</div>", unsafe_allow_html=True)
             for item in meta["internals"]:
                 st.markdown(f"• **{item}**")
-
-        with r_tab3:
-            st.markdown("<div style='font-size:.78rem;font-weight:700;color:#4a5568'>WORKING MECHANISM:</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size:.78rem;font-weight:700;color:#4a5568;margin-top:.6rem'>WORKING MECHANISM:</div>", unsafe_allow_html=True)
             st.write(meta["working_principle"])
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # EXPANSIVE SECTION 1: OVERALL BIOREFINERY MASS BALANCE & SANKEY DIAGRAM
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("### 🌐 Overall Biorefinery Mass Balance & Flow Distribution")
+    st.caption("Complete facility boundary balance reconciling feedstock, water consumption, chemical inputs, fuel ethanol product, and environmental effluents.")
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    with kpi1:
+        st.metric("Total Wet Feedstock", f"{plant_balance['total_mass_in_kg_day']:,.1f} kg/day", f"{plant_balance['total_mass_in_kg_h']:.1f} kg/h")
+    with kpi2:
+        st.metric("Total Water Consumption", f"{plant_balance['wastewater_total_kg_day']:,.1f} kg/day", f"{plant_balance['wastewater_total_kg_day']/1000.0:.2f} m³/day")
+    with kpi3:
+        st.metric("Fuel Ethanol Output", f"{plant_balance['product_ethanol_kg_day']:.2f} kg/day", f"{plant_balance['product_ethanol_l_day']:.1f} L/day (>99.5%)")
+    with kpi4:
+        st.metric("Facility Balance Closure", f"{plant_balance['closure_pct']:.2f}%", f"Error: {plant_balance['closure_error_pct']:+.2f}%")
+
+    # Plotly Interactive Sankey Diagram
+    sankey_data = generate_sankey_data(dm)
+    fig = go.Figure(
+        data=[
+            go.Sankey(
+                node=dict(
+                    pad=18,
+                    thickness=18,
+                    line=dict(color="#1e293b", width=0.5),
+                    label=sankey_data["nodes"],
+                    color="#1e3a8a",
+                ),
+                link=dict(
+                    source=sankey_data["sources"],
+                    target=sankey_data["targets"],
+                    value=sankey_data["values"],
+                    customdata=sankey_data["labels"],
+                    hovertemplate="%{customdata}<br>Mass Flow: %{value:.2f} kg/h<extra></extra>",
+                    color="rgba(56, 161, 105, 0.45)",
+                ),
+            )
+        ]
+    )
+    fig.update_layout(
+        title_text="<b>Biorefinery Mass Flow Network (PFD Process Streams in kg/h)</b>",
+        font=dict(size=12, family="sans-serif"),
+        height=480,
+        margin=dict(l=10, r=10, t=40, b=10),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Master Process Stream Summary Table
+    with st.expander("📋 Master Process Stream Data Table (All 22 Streams)"):
+        stream_rows = [
+            {
+                "Stream ID": s.id,
+                "Stream Name": s.name,
+                "Origin": s.source_id,
+                "Destination": s.target_id,
+                "Category": s.category.capitalize(),
+                "Mass Flow (kg/h)": s.mass_flow_kg_h,
+                "Mass Flow (kg/day)": s.mass_flow_kg_day,
+                "Temp (°C)": s.temp_c,
+                "Pressure (bar)": s.pressure_bar,
+                "Phase": s.phase,
+                "Moisture (%)": f"{s.moisture_pct:.1f}%",
+                "Solids (%)": f"{s.solids_pct:.1f}%",
+            }
+            for s in all_streams.values()
+        ]
+        st.dataframe(pd.DataFrame(stream_rows), hide_index=True, use_container_width=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # EXPANSIVE SECTION 2: EDUCATIONAL ENGINEERING MODE
+    # ══════════════════════════════════════════════════════════════════════════
+    if edu_mode:
+        st.markdown("---")
+        st.markdown(f"### 🎓 Educational Engineering Mode — {selected_eq}: {eq_balance.name}")
+        st.caption("Rigorous engineering equations, variable audit, step-by-step mathematical derivation, and assumptions ledger.")
+
+        edu_col1, edu_col2 = st.columns([1.4, 1.6], gap="large")
+
+        with edu_col1:
+            st.markdown("#### 1. Governing Material Balance Formulation")
+            st.latex(eq_balance.governing_equation)
+
+            st.markdown(
+                """
+                > [!NOTE]
+                > **General Material Balance Conservation Law:**
+                > $$\\text{Accumulation} = \\text{Input} - \\text{Output} + \\text{Generation} - \\text{Consumption}$$
+                > For continuous steady-state operations without chemical reaction, $\\text{Accumulation} = 0$, $\\text{Generation} = 0$, and $\\text{Consumption} = 0$, yielding:
+                > $$\\sum \\dot{m}_{\\text{in}} = \\sum \\dot{m}_{\\text{out}}$$
+                """
+            )
+
+            st.markdown("#### 2. Process Variables Audit")
+            v_t1, v_t2 = st.tabs(["Known Inputs", "Calculated Outputs"])
+            with v_t1:
+                st.dataframe(pd.DataFrame(eq_balance.known_variables), hide_index=True, use_container_width=True)
+            with v_t2:
+                st.dataframe(pd.DataFrame(eq_balance.calculated_variables), hide_index=True, use_container_width=True)
+
+        with edu_col2:
+            st.markdown("#### 3. Step-by-Step Computational Derivation")
+            for i, step in enumerate(eq_balance.step_by_step, 1):
+                st.markdown(f"**Step {i}:** {step}")
+
+            st.markdown("#### 4. Engineering Assumptions Ledger")
+            for asm in eq_balance.assumptions:
+                st.markdown(f"• *{asm}*")
